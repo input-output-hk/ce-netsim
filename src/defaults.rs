@@ -1,0 +1,1 @@
+pub const DEFAULT_BYTES_PER_SEC: u64 = 1_024 * 1_024 * 1_024;
