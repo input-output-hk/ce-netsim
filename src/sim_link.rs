@@ -1,63 +1,100 @@
-use crate::{defaults::DEFAULT_BYTES_PER_SEC, Msg, SimId};
-use anyhow::{anyhow, Context, Result};
+use crate::{HasBytesSize, Msg, SimId};
+use anyhow::{anyhow, Result};
 use std::time::Duration;
 use tokio::{
     sync::mpsc,
     time::{self, Instant},
 };
 
-pub fn link(owner: SimId) -> (SimUpLink, SimDownLink) {
-    let (sender, receiver) = mpsc::channel(1);
+pub fn link<T>(owner: SimId, bytes_per_sec: u64) -> (SimUpLink<T>, SimDownLink<T>) {
+    let (sender, receiver) = mpsc::unbounded_channel();
 
-    let up = SimUpLink { owner, sender };
+    let up = SimUpLink {
+        owner: owner.clone(),
+        sender,
+    };
     let down = SimDownLink {
+        owner,
         receiver,
-        bytes_per_sec: DEFAULT_BYTES_PER_SEC,
+        bytes_per_sec,
     };
 
     (up, down)
 }
 
-pub struct SimUpLink {
+pub struct SimUpLink<T> {
     owner: SimId,
-    sender: mpsc::Sender<Msg>,
+    sender: mpsc::UnboundedSender<Msg<T>>,
 }
 
-pub struct SimDownLink {
-    receiver: mpsc::Receiver<Msg>,
+pub struct SimDownLink<T> {
+    owner: SimId,
+    receiver: mpsc::UnboundedReceiver<Msg<T>>,
     bytes_per_sec: u64,
 }
 
-impl SimUpLink {
-    pub async fn send_to(&self, to: SimId, content: impl Into<Box<[u8]>>) -> Result<()> {
+impl<T> SimUpLink<T>
+where
+    T: HasBytesSize,
+{
+    pub(crate) fn send(&self, msg: Msg<T>) -> Result<()> {
+        self.sender.send(msg).map_err(|error| {
+            anyhow!(
+                "Failed to send Msg ({size} bytes) from {from}, to {to}",
+                from = error.0.from(),
+                to = error.0.to(),
+                size = error.0.content().bytes_size(),
+            )
+        })
+    }
+
+    #[inline]
+    pub(crate) fn is_closed(&self) -> bool {
+        self.sender.is_closed()
+    }
+
+    pub fn send_to(&self, to: SimId, content: T) -> Result<()> {
         let from = self.owner.clone();
-        let msg = Msg::new(from.clone(), to.clone(), content.into());
+        let msg = Msg::new(from.clone(), to.clone(), content);
 
-        self.sender
-            .send(msg)
-            .await
-            .with_context(|| anyhow!("Failed to send Msg from {from}, to {to}"))?;
-
-        Ok(())
+        self.send(msg)
     }
 }
 
-impl SimDownLink {
-    pub async fn recv(&mut self) -> Option<(SimId, Box<[u8]>)> {
+impl<T> SimDownLink<T> {
+    pub fn id(&self) -> &SimId {
+        &self.owner
+    }
+}
+
+impl<T> SimDownLink<T>
+where
+    T: HasBytesSize,
+{
+    pub async fn recv(&mut self) -> Option<Msg<T>> {
         let msg = self.receiver.recv().await?;
 
         let delay = self.msg_delay(&msg);
 
         time::sleep_until(delay).await;
 
-        Some((msg.from().clone(), msg.into_content()))
+        Some(msg)
     }
 
     #[inline]
-    fn msg_delay(&self, msg: &Msg) -> Instant {
-        let content_size = msg.content().len() as u64;
+    fn msg_delay(&self, msg: &Msg<T>) -> Instant {
+        let content_size = msg.content().bytes_size();
         let lapse = Duration::from_secs(content_size / self.bytes_per_sec);
 
         msg.instant() + lapse
+    }
+}
+
+impl<T> Clone for SimUpLink<T> {
+    fn clone(&self) -> Self {
+        Self {
+            owner: self.owner.clone(),
+            sender: self.sender.clone(),
+        }
     }
 }

@@ -1,17 +1,19 @@
-use std::time::Duration;
-
 use crate::SimId;
 use tokio::time::Instant;
 
-pub struct Msg {
+pub trait HasBytesSize: Send + 'static {
+    fn bytes_size(&self) -> u64;
+}
+
+pub struct Msg<T> {
     from: SimId,
     to: SimId,
     sent: Instant,
-    content: Box<[u8]>,
+    content: T,
 }
 
-impl Msg {
-    pub fn new(from: SimId, to: SimId, content: Box<[u8]>) -> Self {
+impl<T> Msg<T> {
+    pub fn new(from: SimId, to: SimId, content: T) -> Self {
         Self {
             from,
             to,
@@ -32,15 +34,32 @@ impl Msg {
         self.sent
     }
 
-    pub fn elapsed(&self) -> Duration {
-        self.sent.elapsed()
+    pub fn content(&self) -> &T {
+        &self.content
     }
 
-    pub fn content(&self) -> &[u8] {
-        self.content.as_ref()
-    }
-
-    pub fn into_content(self) -> Box<[u8]> {
+    pub fn into_content(self) -> T {
         self.content
+    }
+}
+
+impl HasBytesSize for [u8] {
+    fn bytes_size(&self) -> u64 {
+        self.len() as u64
+    }
+}
+impl HasBytesSize for str {
+    fn bytes_size(&self) -> u64 {
+        self.as_bytes().bytes_size()
+    }
+}
+impl HasBytesSize for Vec<u8> {
+    fn bytes_size(&self) -> u64 {
+        (self.capacity() + std::mem::size_of_val(self)) as u64
+    }
+}
+impl HasBytesSize for String {
+    fn bytes_size(&self) -> u64 {
+        (self.capacity() + std::mem::size_of_val(self)) as u64
     }
 }
