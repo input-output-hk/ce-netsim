@@ -9,9 +9,24 @@ use std::{
 };
 use tokio::task::JoinHandle;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SimConfiguration {
+    pub bytes_per_sec: u64,
+}
+
+impl Default for SimConfiguration {
+    fn default() -> Self {
+        Self {
+            bytes_per_sec: DEFAULT_BYTES_PER_SEC,
+        }
+    }
+}
+
 /// the context to keep on in order to continue adding/removing/monitoring nodes
 /// in the sim-ed network.
 pub struct SimContext<T> {
+    configuration: SimConfiguration,
+
     generic_up_link: SimUpLink<T>,
 
     /// new connection will add they UpLink side on this
@@ -35,7 +50,7 @@ impl<T> SimContext<T>
 where
     T: HasBytesSize,
 {
-    pub async fn new() -> Self {
+    pub async fn new(configuration: SimConfiguration) -> Self {
         let addresses = Addresses::default();
         let (generic_up_link, bus) = link(DEFAULT_MUX_ID, u64::MAX);
 
@@ -43,6 +58,7 @@ where
         let mux_handler = tokio::spawn(run_mux(mux));
 
         Self {
+            configuration,
             generic_up_link,
             addresses,
             mux_handler,
@@ -50,7 +66,7 @@ where
     }
 
     pub fn open(&self, address: SimId) -> Result<SimSocket<T>> {
-        let (up, down) = link(address, DEFAULT_BYTES_PER_SEC);
+        let (up, down) = link(address, self.configuration.bytes_per_sec);
 
         let mut addresses = self
             .addresses

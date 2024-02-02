@@ -4,7 +4,11 @@ mod sim_context;
 mod sim_id;
 mod sim_link;
 
-pub use self::{msg::HasBytesSize, sim_context::SimContext, sim_id::SimId};
+pub use self::{
+    msg::HasBytesSize,
+    sim_context::{SimConfiguration, SimContext},
+    sim_id::SimId,
+};
 pub(crate) use self::{
     msg::Msg,
     sim_link::{link, SimDownLink, SimUpLink},
