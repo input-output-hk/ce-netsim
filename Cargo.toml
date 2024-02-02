@@ -8,3 +8,6 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.79"
 tokio = { version = "1.35.1", features = ["sync", "time", "rt"] }
+
+[dev-dependencies]
+tokio = { version = "1.35.1", features = ["sync", "time", "rt", "macros", "rt-multi-thread"] }

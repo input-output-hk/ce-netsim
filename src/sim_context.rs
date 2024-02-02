@@ -91,7 +91,9 @@ where
                         }
                     }
                 }
-                std::collections::hash_map::Entry::Vacant(_) => todo!(),
+                std::collections::hash_map::Entry::Vacant(_) => {
+                    // do nothing
+                }
             }
 
             Ok(Some(()))

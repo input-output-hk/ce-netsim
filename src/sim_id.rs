@@ -15,3 +15,9 @@ impl fmt::Display for SimId {
         self.0.fmt(f)
     }
 }
+
+impl From<&'static str> for SimId {
+    fn from(value: &'static str) -> Self {
+        Self::new(value)
+    }
+}

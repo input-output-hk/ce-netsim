@@ -52,13 +52,6 @@ where
     pub(crate) fn is_closed(&self) -> bool {
         self.sender.is_closed()
     }
-
-    pub fn send_to(&self, to: SimId, content: T) -> Result<()> {
-        let from = self.owner.clone();
-        let msg = Msg::new(from.clone(), to.clone(), content);
-
-        self.send(msg)
-    }
 }
 
 impl<T> SimDownLink<T> {

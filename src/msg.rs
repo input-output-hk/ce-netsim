@@ -48,6 +48,11 @@ impl HasBytesSize for [u8] {
         self.len() as u64
     }
 }
+impl HasBytesSize for &'static str {
+    fn bytes_size(&self) -> u64 {
+        self.as_bytes().bytes_size()
+    }
+}
 impl HasBytesSize for str {
     fn bytes_size(&self) -> u64 {
         self.as_bytes().bytes_size()

@@ -34,7 +34,8 @@ where
     T: HasBytesSize,
 {
     pub fn send_to(&self, to: SimId, msg: T) -> Result<()> {
-        self.up.send_to(to, msg)
+        let msg = Msg::new(self.id().clone(), to, msg);
+        self.up.send(msg)
     }
 
     pub async fn recv(&mut self) -> Option<(SimId, T)> {
