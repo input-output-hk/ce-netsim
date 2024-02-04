@@ -3,6 +3,7 @@ mod msg;
 mod sim_context;
 mod sim_id;
 mod sim_link;
+mod time_ordered;
 
 pub use self::{
     msg::HasBytesSize,
@@ -12,6 +13,7 @@ pub use self::{
 pub(crate) use self::{
     msg::Msg,
     sim_link::{link, SimDownLink, SimUpLink},
+    time_ordered::TimeOrdered,
 };
 use anyhow::Result;
 
