@@ -42,3 +42,51 @@ impl ShutdownReceiver {
         self.0.wait_for(|b| *b).await.map(|r| *r).unwrap_or(true)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+    use tokio::time::timeout;
+
+    const TIMEOUT: Duration = Duration::from_millis(200);
+
+    #[tokio::test]
+    async fn await_for_shutdown() {
+        let controller = ShutdownController::new();
+        let mut receiver = controller.subscribe();
+
+        let wait_shutting_down = timeout(TIMEOUT, receiver.is_shutting_down());
+
+        if let Ok(bool) = wait_shutting_down.await {
+            panic!("Should timeout: {bool:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn yield_at_shutdown() {
+        let controller = ShutdownController::new();
+        let mut receiver = controller.subscribe();
+
+        controller.shutdown();
+        let wait_shutting_down = timeout(TIMEOUT, receiver.is_shutting_down());
+
+        if let Err(elapsed) = wait_shutting_down.await {
+            panic!("should have not timedout: {elapsed:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn yield_on_drop() {
+        let controller = ShutdownController::new();
+        let mut receiver = controller.subscribe();
+
+        let wait_shutting_down = timeout(TIMEOUT, receiver.is_shutting_down());
+
+        ::core::mem::drop(controller);
+
+        if let Err(elapsed) = wait_shutting_down.await {
+            panic!("should have not timedout: {elapsed:?}");
+        }
+    }
+}
