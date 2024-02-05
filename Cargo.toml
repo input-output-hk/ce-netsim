@@ -1,21 +1,2 @@
-[package]
-name = "ce-network-sim"
-version = "0.1.0"
-edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-anyhow = "1.0.79"
-# in order to continue the WASM support it is important to stick
-# to the list of supported features listed https://docs.rs/tokio/latest/tokio/#wasm-support
-tokio = { version = "1.35.1", features = ["sync", "time", "rt", "macros"] }
-
-[dev-dependencies]
-tokio = { version = "1.35.1", features = [
-    "sync",
-    "time",
-    "rt",
-    "macros",
-    "rt-multi-thread",
-] }
+[workspace]
+members = ["netsim-async", "netsim-util"]

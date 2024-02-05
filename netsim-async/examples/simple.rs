@@ -1,4 +1,4 @@
-use ce_network_sim::{
+use ce_netsim_async::{
     HasBytesSize as _, SimConfiguration, SimContext, SimId, SimSocketConfiguration,
 };
 use tokio::time::Instant;

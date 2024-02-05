@@ -1,24 +1,17 @@
 pub(crate) mod defaults;
-mod msg;
 mod shutdown;
 mod sim_context;
-mod sim_id;
 mod sim_link;
-mod time_queue;
 
-pub use self::{
-    msg::HasBytesSize,
-    sim_context::{SimConfiguration, SimContext},
-    sim_id::SimId,
-};
+pub use self::sim_context::{SimConfiguration, SimContext};
 pub(crate) use self::{
-    msg::Msg,
     shutdown::{ShutdownController, ShutdownReceiver},
     sim_context::MuxSend,
     sim_link::{link, SimDownLink, SimUpLink},
-    time_queue::TimeQueue,
 };
 use anyhow::Result;
+pub use ce_netsim_util::{HasBytesSize, SimId};
+pub(crate) use ce_netsim_util::{Msg, TimeQueue};
 
 /// configuration for a given [`SimSocket`]
 pub struct SimSocketConfiguration {
