@@ -1,2 +1,2 @@
 [workspace]
-members = ["netsim-async", "netsim-util"]
+members = ["netsim", "netsim-async", "netsim-util"]
