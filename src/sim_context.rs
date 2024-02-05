@@ -96,10 +96,14 @@ where
     T: HasBytesSize,
 {
     fn process_new_msg(&mut self, msg: Msg<T>) -> Result<()> {
-        // 1. get the link speed
-        // 2. compute the msg delay
+        // 1. get the message time
+        let sent_time = msg.time();
+        // 2. get the link speed
+        // 3. compute the msg delay
         let delay = Duration::from_secs(0);
-        let due_by = SystemTime::now() + delay;
+
+        // 4. compute the due time
+        let due_by = sent_time + delay;
 
         self.msgs.push(due_by, msg);
         Ok(())
@@ -136,8 +140,10 @@ where
         let due_msg = self.msgs.wait_pop();
 
         select! {
-            Some(msg) = new_msg => self.process_new_msg(msg)?,
+            biased;
+
             Some(msg) = due_msg => self.propagate_msg(msg)?,
+            Some(msg) = new_msg => self.process_new_msg(msg)?,
         };
 
         Ok(Some(()))

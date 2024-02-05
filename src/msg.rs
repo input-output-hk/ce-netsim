@@ -8,7 +8,7 @@ pub trait HasBytesSize: Send + 'static {
 pub struct Msg<T> {
     from: SimId,
     to: SimId,
-    sent: SystemTime,
+    time: SystemTime,
     content: T,
 }
 
@@ -53,7 +53,7 @@ impl<T> Msg<T> {
         Self {
             from,
             to,
-            sent: SystemTime::now(),
+            time: SystemTime::now(),
             content,
         }
     }
@@ -66,8 +66,8 @@ impl<T> Msg<T> {
         &self.to
     }
 
-    pub fn sent(&self) -> SystemTime {
-        self.sent
+    pub fn time(&self) -> SystemTime {
+        self.time
     }
 
     pub fn content(&self) -> &T {

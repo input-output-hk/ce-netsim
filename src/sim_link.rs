@@ -1,10 +1,6 @@
 use crate::{HasBytesSize, Msg, SimId};
 use anyhow::{anyhow, Result};
-use std::time::Duration;
-use tokio::{
-    sync::mpsc,
-    time::{self, Instant},
-};
+use tokio::sync::mpsc;
 
 pub fn link<T>(bytes_per_sec: u64) -> (SimUpLink<T>, SimDownLink<T>) {
     let (sender, receiver) = mpsc::unbounded_channel();
@@ -53,18 +49,10 @@ where
     T: HasBytesSize,
 {
     pub async fn recv(&mut self) -> Option<Msg<T>> {
-        let msg = self.receiver.recv().await?;
-
-        let delay = self.msg_delay(&msg);
-
-        let now = std::time::SystemTime::now();
-        let delay = delay.duration_since(now).unwrap_or(Duration::default());
-
-        time::sleep(delay).await;
-
-        Some(msg)
+        self.receiver.recv().await
     }
 
+    /*
     #[inline]
     fn msg_delay(&self, msg: &Msg<T>) -> std::time::SystemTime {
         let content_size = msg.content().bytes_size();
@@ -72,6 +60,7 @@ where
 
         msg.sent() + lapse
     }
+    */
 }
 
 impl<T> Clone for SimUpLink<T> {
