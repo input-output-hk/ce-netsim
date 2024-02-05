@@ -14,11 +14,26 @@ pub use self::{
 pub(crate) use self::{
     msg::Msg,
     shutdown::{ShutdownController, ShutdownReceiver},
+    sim_context::MuxSend,
     sim_link::{link, SimDownLink, SimUpLink},
     time_queue::TimeQueue,
 };
 use anyhow::Result;
-use sim_context::MuxSend;
+
+/// configuration for a given [`SimSocket`]
+pub struct SimSocketConfiguration {
+    /// the download speed of this socket in bytes per seconds
+    ///
+    pub bytes_per_sec: u64,
+}
+
+impl Default for SimSocketConfiguration {
+    fn default() -> Self {
+        Self {
+            bytes_per_sec: defaults::DEFAULT_BYTES_PER_SEC,
+        }
+    }
+}
 
 pub struct SimSocket<T> {
     id: SimId,

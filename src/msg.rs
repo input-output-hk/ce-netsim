@@ -1,7 +1,18 @@
 use crate::SimId;
 use std::time::SystemTime;
 
+/// Trait for message content that will be sent via
+/// [`send_to`] and [`recv`] function of the [`SimSocket`].
+///
+/// Messages sent aren't serialised, but we need to know the
+/// bytes length representation of the messages so that we
+/// can accurately treat the message in the multiplexer.
+///
+/// [`SimSocket`]: crate::SimSocket
+/// [`send_to`]: crate::SimSocket::send_to
+/// [`recv`]: crate::SimSocket::recv
 pub trait HasBytesSize: Send + 'static {
+    /// return the content of the message in bytes
     fn bytes_size(&self) -> u64;
 }
 
