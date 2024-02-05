@@ -26,4 +26,6 @@ async fn main() {
     assert_eq!(from, NET1);
 
     println!("{from} -> {NET2} ({}ms): {msg}", elapsed.as_millis());
+
+    context.shutdown().await.unwrap();
 }

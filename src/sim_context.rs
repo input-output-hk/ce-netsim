@@ -114,10 +114,12 @@ where
         Ok(SimSocket::new(address, self.generic_up_link.clone(), down))
     }
 
+    /// clean shutdown the mutex.
+    ///
+    /// There are not timeout to this operation, for now this is left to the
+    /// calling user to use the appropriate timeout as needed.
     pub async fn shutdown(self) -> Result<()> {
         self.shutdown.shutdown();
-
-        // todo add timeout
 
         match self.mux_handler.await {
             // all good
