@@ -8,6 +8,7 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, SystemTime},
 };
+use tokio::sync::mpsc;
 use tokio::{select, task::JoinHandle};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -28,7 +29,7 @@ impl Default for SimConfiguration {
 pub struct SimContext<T> {
     configuration: SimConfiguration,
 
-    generic_up_link: SimUpLink<T>,
+    generic_up_link: MuxSend<T>,
 
     /// new connection will add they UpLink side on this
     /// value for the [`Mux`] to redirect messages when
@@ -38,10 +39,31 @@ pub struct SimContext<T> {
     mux_handler: JoinHandle<()>,
 }
 
+pub struct MuxSend<T>(mpsc::UnboundedSender<Msg<T>>);
+
+impl<T> Clone for MuxSend<T> {
+    fn clone(&self) -> Self {
+        MuxSend(self.0.clone())
+    }
+}
+
+impl<T: HasBytesSize> MuxSend<T> {
+    pub(crate) fn send(&self, msg: Msg<T>) -> Result<()> {
+        self.0.send(msg).map_err(|error| {
+            anyhow!(
+                "Failed to send Msg ({size} bytes) from {from}, to {to}",
+                from = error.0.from(),
+                to = error.0.to(),
+                size = error.0.content().bytes_size(),
+            )
+        })
+    }
+}
+
 type Addresses<T> = Arc<Mutex<HashMap<SimId, SimUpLink<T>>>>;
 
 struct Mux<T> {
-    bus: SimDownLink<T>,
+    bus: mpsc::UnboundedReceiver<Msg<T>>,
 
     msgs: TimeQueue<T>,
 
@@ -55,14 +77,14 @@ where
 {
     pub async fn new(configuration: SimConfiguration) -> Self {
         let addresses = Addresses::default();
-        let (generic_up_link, bus) = link(u64::MAX);
+        let (generic_up_link, bus) = mpsc::unbounded_channel();
 
         let mux = Mux::new(bus, Arc::clone(&addresses));
         let mux_handler = tokio::spawn(run_mux(mux));
 
         Self {
             configuration,
-            generic_up_link,
+            generic_up_link: MuxSend(generic_up_link),
             addresses,
             mux_handler,
         }
@@ -82,7 +104,7 @@ where
 }
 
 impl<T> Mux<T> {
-    fn new(bus: SimDownLink<T>, addresses: Addresses<T>) -> Self {
+    fn new(bus: mpsc::UnboundedReceiver<Msg<T>>, addresses: Addresses<T>) -> Self {
         Self {
             bus,
             addresses,

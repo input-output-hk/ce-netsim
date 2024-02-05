@@ -16,15 +16,16 @@ pub(crate) use self::{
     time_queue::TimeQueue,
 };
 use anyhow::Result;
+use sim_context::MuxSend;
 
 pub struct SimSocket<T> {
     id: SimId,
-    up: SimUpLink<T>,
+    up: MuxSend<T>,
     down: SimDownLink<T>,
 }
 
 impl<T> SimSocket<T> {
-    pub(crate) fn new(id: SimId, to_bus: SimUpLink<T>, receiver: SimDownLink<T>) -> Self {
+    pub(crate) fn new(id: SimId, to_bus: MuxSend<T>, receiver: SimDownLink<T>) -> Self {
         Self {
             id,
             up: to_bus,
