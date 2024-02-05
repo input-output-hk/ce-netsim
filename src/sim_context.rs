@@ -1,12 +1,12 @@
 use crate::{
-    defaults::DEFAULT_BYTES_PER_SEC, link, HasBytesSize, Msg, SimDownLink, SimId, SimSocket,
-    SimUpLink, TimeQueue,
+    defaults::DEFAULT_BYTES_PER_SEC, link, HasBytesSize, Msg, SimId, SimSocket, SimUpLink,
+    TimeQueue,
 };
 use anyhow::{anyhow, bail, Result};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
-    time::{Duration, SystemTime},
+    time::Duration,
 };
 use tokio::sync::mpsc;
 use tokio::{select, task::JoinHandle};
@@ -120,9 +120,23 @@ where
     fn process_new_msg(&mut self, msg: Msg<T>) -> Result<()> {
         // 1. get the message time
         let sent_time = msg.time();
-        // 2. get the link speed
+        // 2. get the link speed (bytes per seconds)
+        let link_speed = {
+            let dst = msg.to().clone();
+            let mut addresses = self.addresses.lock().unwrap();
+
+            match addresses.entry(dst) {
+                std::collections::hash_map::Entry::Occupied(entry) => entry.get().speed(),
+                std::collections::hash_map::Entry::Vacant(_) => {
+                    // by itself this is not an error, just someone sending something
+                    // to an unknown address
+                    return Ok(());
+                }
+            }
+        };
         // 3. compute the msg delay
-        let delay = Duration::from_secs(0);
+        let content_size = msg.content().bytes_size();
+        let delay = Duration::from_secs(content_size / link_speed);
 
         // 4. compute the due time
         let due_by = sent_time + delay;

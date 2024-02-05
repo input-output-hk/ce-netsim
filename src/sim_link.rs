@@ -1,26 +1,26 @@
-use crate::{HasBytesSize, Msg, SimId};
+use crate::{HasBytesSize, Msg};
 use anyhow::{anyhow, Result};
 use tokio::sync::mpsc;
 
 pub fn link<T>(bytes_per_sec: u64) -> (SimUpLink<T>, SimDownLink<T>) {
     let (sender, receiver) = mpsc::unbounded_channel();
 
-    let up = SimUpLink { sender };
-    let down = SimDownLink {
-        receiver,
+    let up = SimUpLink {
+        sender,
         bytes_per_sec,
     };
+    let down = SimDownLink { receiver };
 
     (up, down)
 }
 
 pub struct SimUpLink<T> {
     sender: mpsc::UnboundedSender<Msg<T>>,
+    bytes_per_sec: u64,
 }
 
 pub struct SimDownLink<T> {
     receiver: mpsc::UnboundedReceiver<Msg<T>>,
-    bytes_per_sec: u64,
 }
 
 impl<T> SimUpLink<T>
@@ -38,6 +38,12 @@ where
         })
     }
 
+    /// bytes per seconds
+    #[inline]
+    pub(crate) fn speed(&self) -> u64 {
+        self.bytes_per_sec
+    }
+
     #[inline]
     pub(crate) fn is_closed(&self) -> bool {
         self.sender.is_closed()
@@ -51,22 +57,13 @@ where
     pub async fn recv(&mut self) -> Option<Msg<T>> {
         self.receiver.recv().await
     }
-
-    /*
-    #[inline]
-    fn msg_delay(&self, msg: &Msg<T>) -> std::time::SystemTime {
-        let content_size = msg.content().bytes_size();
-        let lapse = Duration::from_secs(content_size / self.bytes_per_sec);
-
-        msg.sent() + lapse
-    }
-    */
 }
 
 impl<T> Clone for SimUpLink<T> {
     fn clone(&self) -> Self {
         Self {
             sender: self.sender.clone(),
+            bytes_per_sec: self.bytes_per_sec,
         }
     }
 }
