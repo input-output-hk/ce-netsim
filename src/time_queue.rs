@@ -1,10 +1,11 @@
 use crate::msg::{MsgWith, OrderedByTime};
 use crate::Msg;
+use core::cmp::Reverse;
 use std::{collections::BinaryHeap, time::SystemTime};
 use tokio::time::sleep;
 
 pub struct TimeQueue<T> {
-    map: BinaryHeap<OrderedByTime<T>>,
+    map: BinaryHeap<Reverse<OrderedByTime<T>>>,
 }
 
 impl<T> TimeQueue<T> {
@@ -26,11 +27,11 @@ impl<T> TimeQueue<T> {
 
     #[inline]
     pub fn time_to_next_msg(&self) -> Option<SystemTime> {
-        self.map.peek().map(|v| v.inner().reception_time)
+        self.map.peek().map(|v| v.0.inner().reception_time)
     }
 
     pub fn pop(&mut self) -> Option<Msg<T>> {
-        self.map.pop().map(|v| v.into_inner().msg)
+        self.map.pop().map(|v| v.0.into_inner().msg)
     }
 
     pub fn push(&mut self, time: SystemTime, msg: Msg<T>) {
@@ -38,13 +39,13 @@ impl<T> TimeQueue<T> {
             reception_time: time,
             msg: msg,
         };
-        self.map.push(OrderedByTime(m))
+        self.map.push(Reverse(OrderedByTime(m)))
     }
 
     pub async fn wait_pop(&mut self) -> Option<Msg<T>> {
         let entry = self.map.peek()?;
         let now = SystemTime::now();
-        let diff = entry.inner().reception_time.duration_since(now);
+        let diff = entry.0.inner().reception_time.duration_since(now);
         if let Ok(duration) = diff {
             sleep(duration).await;
         };
