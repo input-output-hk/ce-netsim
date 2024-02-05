@@ -8,7 +8,7 @@ pub struct TimeQueue<T> {
     map: BinaryHeap<Reverse<OrderedByTime<T>>>,
 }
 
-struct OrderedByTime<T>(pub MsgWith<T>);
+struct OrderedByTime<T>(MsgWith<T>);
 
 impl<T> OrderedByTime<T> {
     pub fn inner(&self) -> &MsgWith<T> {
@@ -86,18 +86,16 @@ impl<T> TimeQueue<T> {
     pub fn push(&mut self, time: SystemTime, msg: Msg<T>) {
         let m = MsgWith {
             reception_time: time,
-            msg: msg,
+            msg,
         };
         self.map.push(Reverse(OrderedByTime(m)))
     }
 
-    // todo should not be here
     pub async fn wait_pop(&mut self) -> Option<Msg<T>> {
         let entry = self.map.peek()?;
-        let now = SystemTime::now();
-        let diff = entry.0.inner().reception_time.duration_since(now);
-        if let Ok(duration) = diff {
-            sleep(duration).await;
+        let diff = entry.0.inner().reception_time.elapsed();
+        if let Err(duration) = diff {
+            sleep(duration.duration()).await;
         };
         self.pop()
     }
@@ -147,7 +145,11 @@ mod tests {
         let Some(_) = c.wait_pop().await else {
             panic!("The msg should be returned")
         };
-        assert!(instant.elapsed().as_millis() < 5);
+        let elapsed = instant.elapsed();
+        assert!(
+            elapsed.as_millis() < 5,
+            "Should be instantaneous: {elapsed:?}"
+        );
 
         assert!(c.is_empty());
     }
@@ -166,7 +168,12 @@ mod tests {
         let Some(_) = c.wait_pop().await else {
             panic!("The msg should be returned")
         };
-        assert!(instant.elapsed().as_millis() > (DURATION.as_millis() - 50));
+        let elapsed = instant.elapsed();
+        let min = DURATION.as_millis() - 50;
+        assert!(
+            elapsed.as_millis() > min,
+            "expecting elapsed time ({elapsed:?}) > min duration ({min}ms)"
+        );
 
         assert!(c.is_empty());
     }
