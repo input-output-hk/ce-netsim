@@ -3,7 +3,7 @@ mod msg;
 mod sim_context;
 mod sim_id;
 mod sim_link;
-mod time_ordered;
+mod time_queue;
 
 pub use self::{
     msg::HasBytesSize,
@@ -13,7 +13,7 @@ pub use self::{
 pub(crate) use self::{
     msg::Msg,
     sim_link::{link, SimDownLink, SimUpLink},
-    time_ordered::TimeOrdered,
+    time_queue::TimeQueue,
 };
 use anyhow::Result;
 
@@ -33,7 +33,7 @@ impl<T> SimSocket<T> {
     }
 
     pub fn id(&self) -> &SimId {
-        self.id()
+        &self.id
     }
 }
 

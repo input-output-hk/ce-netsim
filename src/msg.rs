@@ -1,5 +1,5 @@
 use crate::SimId;
-use tokio::time::Instant;
+use std::time::SystemTime;
 
 pub trait HasBytesSize: Send + 'static {
     fn bytes_size(&self) -> u64;
@@ -8,8 +8,44 @@ pub trait HasBytesSize: Send + 'static {
 pub struct Msg<T> {
     from: SimId,
     to: SimId,
-    sent: Instant,
+    sent: SystemTime,
     content: T,
+}
+
+pub struct MsgWith<T> {
+    pub msg: Msg<T>,
+    pub reception_time: SystemTime,
+}
+
+pub struct OrderedByTime<T>(pub MsgWith<T>);
+
+impl<T> OrderedByTime<T> {
+    pub fn inner(&self) -> &MsgWith<T> {
+        &self.0
+    }
+
+    pub fn into_inner(self) -> MsgWith<T> {
+        self.0
+    }
+}
+
+impl<T> PartialEq for OrderedByTime<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.reception_time == other.0.reception_time
+    }
+}
+
+impl<T> Eq for OrderedByTime<T> {}
+
+impl<T> PartialOrd for OrderedByTime<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.0.reception_time.partial_cmp(&other.0.reception_time)
+    }
+}
+impl<T> Ord for OrderedByTime<T> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.reception_time.cmp(&other.0.reception_time)
+    }
 }
 
 impl<T> Msg<T> {
@@ -17,7 +53,7 @@ impl<T> Msg<T> {
         Self {
             from,
             to,
-            sent: Instant::now(),
+            sent: SystemTime::now(),
             content,
         }
     }
@@ -30,7 +66,7 @@ impl<T> Msg<T> {
         &self.to
     }
 
-    pub fn instant(&self) -> Instant {
+    pub fn sent(&self) -> SystemTime {
         self.sent
     }
 

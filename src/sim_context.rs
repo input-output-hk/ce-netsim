@@ -1,10 +1,9 @@
 use crate::{
-    defaults::{DEFAULT_BYTES_PER_SEC, DEFAULT_MUX_ID},
-    link, HasBytesSize, Msg, SimDownLink, SimId, SimSocket, SimUpLink, TimeOrdered,
+    defaults::DEFAULT_BYTES_PER_SEC, link, HasBytesSize, Msg, SimDownLink, SimId, SimSocket,
+    SimUpLink, TimeQueue,
 };
 use anyhow::{anyhow, bail, Result};
 use std::{
-    alloc::System,
     collections::HashMap,
     sync::{Arc, Mutex},
     time::{Duration, SystemTime},
@@ -44,7 +43,7 @@ type Addresses<T> = Arc<Mutex<HashMap<SimId, SimUpLink<T>>>>;
 struct Mux<T> {
     bus: SimDownLink<T>,
 
-    msgs: TimeOrdered<T>,
+    msgs: TimeQueue<T>,
 
     /// new addresses are registered on the [`SimContext`] side
     addresses: Addresses<T>,
@@ -87,7 +86,7 @@ impl<T> Mux<T> {
         Self {
             bus,
             addresses,
-            msgs: TimeOrdered::new(),
+            msgs: TimeQueue::new(),
         }
     }
 }

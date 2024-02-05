@@ -57,17 +57,20 @@ where
 
         let delay = self.msg_delay(&msg);
 
-        time::sleep_until(delay).await;
+        let now = std::time::SystemTime::now();
+        let delay = delay.duration_since(now).unwrap_or(Duration::default());
+
+        time::sleep(delay).await;
 
         Some(msg)
     }
 
     #[inline]
-    fn msg_delay(&self, msg: &Msg<T>) -> Instant {
+    fn msg_delay(&self, msg: &Msg<T>) -> std::time::SystemTime {
         let content_size = msg.content().bytes_size();
         let lapse = Duration::from_secs(content_size / self.bytes_per_sec);
 
-        msg.instant() + lapse
+        msg.sent() + lapse
     }
 }
 
