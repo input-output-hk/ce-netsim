@@ -1,5 +1,7 @@
 # Network Simulator
 
+Two versions are offered here, an async version and a non async version.
+
 ## Doc
 
 run `cargo doc --open --no-deps`
@@ -12,4 +14,14 @@ by `net2` from `net1`.
 
 ```
 cargo run --example simple
+```
+
+## Async Example
+
+In the `simple_async.rs` example we show how a message can be delayed. In this
+example you should see the message took approximately 1seconds to be received
+by `net2` from `net1`.
+
+```
+cargo run --example simple_async
 ```
