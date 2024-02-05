@@ -6,15 +6,11 @@ use tokio::{
     time::{self, Instant},
 };
 
-pub fn link<T>(owner: SimId, bytes_per_sec: u64) -> (SimUpLink<T>, SimDownLink<T>) {
+pub fn link<T>(bytes_per_sec: u64) -> (SimUpLink<T>, SimDownLink<T>) {
     let (sender, receiver) = mpsc::unbounded_channel();
 
-    let up = SimUpLink {
-        owner: owner.clone(),
-        sender,
-    };
+    let up = SimUpLink { sender };
     let down = SimDownLink {
-        owner,
         receiver,
         bytes_per_sec,
     };
@@ -23,12 +19,10 @@ pub fn link<T>(owner: SimId, bytes_per_sec: u64) -> (SimUpLink<T>, SimDownLink<T
 }
 
 pub struct SimUpLink<T> {
-    owner: SimId,
     sender: mpsc::UnboundedSender<Msg<T>>,
 }
 
 pub struct SimDownLink<T> {
-    owner: SimId,
     receiver: mpsc::UnboundedReceiver<Msg<T>>,
     bytes_per_sec: u64,
 }
@@ -51,12 +45,6 @@ where
     #[inline]
     pub(crate) fn is_closed(&self) -> bool {
         self.sender.is_closed()
-    }
-}
-
-impl<T> SimDownLink<T> {
-    pub fn id(&self) -> &SimId {
-        &self.owner
     }
 }
 
@@ -86,7 +74,6 @@ where
 impl<T> Clone for SimUpLink<T> {
     fn clone(&self) -> Self {
         Self {
-            owner: self.owner.clone(),
             sender: self.sender.clone(),
         }
     }

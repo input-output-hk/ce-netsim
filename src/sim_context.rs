@@ -56,7 +56,7 @@ where
 {
     pub async fn new(configuration: SimConfiguration) -> Self {
         let addresses = Addresses::default();
-        let (generic_up_link, bus) = link(DEFAULT_MUX_ID, u64::MAX);
+        let (generic_up_link, bus) = link(u64::MAX);
 
         let mux = Mux::new(bus, Arc::clone(&addresses));
         let mux_handler = tokio::spawn(run_mux(mux));
@@ -70,15 +70,15 @@ where
     }
 
     pub fn open(&self, address: SimId) -> Result<SimSocket<T>> {
-        let (up, down) = link(address, self.configuration.bytes_per_sec);
+        let (up, down) = link(self.configuration.bytes_per_sec);
 
         let mut addresses = self
             .addresses
             .lock()
             .map_err(|error| anyhow!("Failed to register address, mutex poisoned {error}"))?;
-        addresses.insert(down.id().clone(), up);
+        addresses.insert(address.clone(), up);
 
-        Ok(SimSocket::new(self.generic_up_link.clone(), down))
+        Ok(SimSocket::new(address, self.generic_up_link.clone(), down))
     }
 }
 
