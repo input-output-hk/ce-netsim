@@ -17,37 +17,6 @@ pub struct MsgWith<T> {
     pub reception_time: SystemTime,
 }
 
-pub struct OrderedByTime<T>(pub MsgWith<T>);
-
-impl<T> OrderedByTime<T> {
-    pub fn inner(&self) -> &MsgWith<T> {
-        &self.0
-    }
-
-    pub fn into_inner(self) -> MsgWith<T> {
-        self.0
-    }
-}
-
-impl<T> PartialEq for OrderedByTime<T> {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.reception_time == other.0.reception_time
-    }
-}
-
-impl<T> Eq for OrderedByTime<T> {}
-
-impl<T> PartialOrd for OrderedByTime<T> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.0.reception_time.partial_cmp(&other.0.reception_time)
-    }
-}
-impl<T> Ord for OrderedByTime<T> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.0.reception_time.cmp(&other.0.reception_time)
-    }
-}
-
 impl<T> Msg<T> {
     pub fn new(from: SimId, to: SimId, content: T) -> Self {
         Self {

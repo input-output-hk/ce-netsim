@@ -1,4 +1,4 @@
-use crate::msg::{MsgWith, OrderedByTime};
+use crate::msg::MsgWith;
 use crate::Msg;
 use core::cmp::Reverse;
 use std::{collections::BinaryHeap, time::SystemTime};
@@ -6,6 +6,37 @@ use tokio::time::sleep;
 
 pub struct TimeQueue<T> {
     map: BinaryHeap<Reverse<OrderedByTime<T>>>,
+}
+
+struct OrderedByTime<T>(pub MsgWith<T>);
+
+impl<T> OrderedByTime<T> {
+    pub fn inner(&self) -> &MsgWith<T> {
+        &self.0
+    }
+
+    pub fn into_inner(self) -> MsgWith<T> {
+        self.0
+    }
+}
+
+impl<T> PartialEq for OrderedByTime<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.reception_time == other.0.reception_time
+    }
+}
+
+impl<T> Eq for OrderedByTime<T> {}
+
+impl<T> PartialOrd for OrderedByTime<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.0.reception_time.partial_cmp(&other.0.reception_time)
+    }
+}
+impl<T> Ord for OrderedByTime<T> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.reception_time.cmp(&other.0.reception_time)
+    }
 }
 
 impl<T> TimeQueue<T> {
