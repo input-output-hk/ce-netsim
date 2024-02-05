@@ -34,6 +34,24 @@ impl<T> TimeQueue<T> {
         self.map.pop().map(|v| v.0.into_inner().msg)
     }
 
+    pub fn pop_all_elapsed(&mut self, time: SystemTime) -> Vec<Msg<T>> {
+        let mut msgs = Vec::new();
+        loop {
+            match self.map.peek() {
+                None => break,
+                Some(msg) => {
+                    if msg.0.inner().reception_time <= time {
+                        let msg = self.pop().unwrap();
+                        msgs.push(msg)
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+        msgs
+    }
+
     pub fn push(&mut self, time: SystemTime, msg: Msg<T>) {
         let m = MsgWith {
             reception_time: time,
@@ -42,6 +60,7 @@ impl<T> TimeQueue<T> {
         self.map.push(Reverse(OrderedByTime(m)))
     }
 
+    // todo should not be here
     pub async fn wait_pop(&mut self) -> Option<Msg<T>> {
         let entry = self.map.peek()?;
         let now = SystemTime::now();
