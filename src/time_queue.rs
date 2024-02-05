@@ -27,6 +27,7 @@ impl<T> PartialEq for OrderedByTime<T> {
 
 impl<T> Eq for OrderedByTime<T> {}
 
+#[allow(clippy::non_canonical_partial_ord_impl)]
 impl<T> PartialOrd for OrderedByTime<T> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         self.0.reception_time.partial_cmp(&other.0.reception_time)

@@ -1,8 +1,8 @@
 use crate::{
-    defaults::DEFAULT_BYTES_PER_SEC, link, HasBytesSize, Msg, SimId, SimSocket, SimUpLink,
-    TimeQueue,
+    defaults::DEFAULT_BYTES_PER_SEC, link, HasBytesSize, Msg, ShutdownController, ShutdownReceiver,
+    SimId, SimSocket, SimUpLink, TimeQueue,
 };
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -43,7 +43,8 @@ pub struct SimContext<T> {
     /// it's time for it
     addresses: Addresses<T>,
 
-    mux_handler: JoinHandle<()>,
+    shutdown: ShutdownController,
+    mux_handler: JoinHandle<Result<()>>,
 }
 
 pub struct MuxSend<T>(mpsc::UnboundedSender<Msg<T>>);
@@ -76,6 +77,8 @@ struct Mux<T> {
 
     /// new addresses are registered on the [`SimContext`] side
     addresses: Addresses<T>,
+
+    shutdown: ShutdownReceiver,
 }
 
 impl<T> SimContext<T>
@@ -85,14 +88,16 @@ where
     pub async fn new(configuration: SimConfiguration) -> Self {
         let addresses = Addresses::default();
         let (generic_up_link, bus) = mpsc::unbounded_channel();
+        let shutdown = ShutdownController::new();
 
-        let mux = Mux::new(bus, Arc::clone(&addresses));
+        let mux = Mux::new(shutdown.subscribe(), bus, Arc::clone(&addresses));
         let mux_handler = tokio::spawn(run_mux(mux));
 
         Self {
             configuration,
             generic_up_link: MuxSend(generic_up_link),
             addresses,
+            shutdown,
             mux_handler,
         }
     }
@@ -108,14 +113,36 @@ where
 
         Ok(SimSocket::new(address, self.generic_up_link.clone(), down))
     }
+
+    pub async fn shutdown(self) -> Result<()> {
+        self.shutdown.shutdown();
+
+        // todo add timeout
+
+        match self.mux_handler.await {
+            // all good
+            Ok(Ok(())) => Ok(()),
+            // Mux error
+            Ok(Err(error)) => Err(error).context("NetSim Multiplexer error"),
+            // join error
+            Err(error) => {
+                Err(error).context("Failed to await for the NetSim Multiplexer to finish")
+            }
+        }
+    }
 }
 
 impl<T> Mux<T> {
-    fn new(bus: mpsc::UnboundedReceiver<Msg<T>>, addresses: Addresses<T>) -> Self {
+    fn new(
+        shutdown: ShutdownReceiver,
+        bus: mpsc::UnboundedReceiver<Msg<T>>,
+        addresses: Addresses<T>,
+    ) -> Self {
         Self {
             bus,
             addresses,
             msgs: TimeQueue::new(),
+            shutdown,
         }
     }
 }
@@ -202,25 +229,30 @@ where
         }
     }
 
-    async fn step(&mut self) -> Result<Option<()>> {
+    async fn step(&mut self) -> Result<bool> {
+        let mut shutdown = self.shutdown.clone();
+        let is_shutingdown = shutdown.is_shutting_down();
         let due_msg = self.wait_next_msg();
         let new_msg = self.bus.recv();
 
         select! {
             biased;
 
+            // instruct the `run_mux` loop it's time to stop
+            true = is_shutingdown => return Ok(false),
+            // process all the pending messages
             _ = due_msg => self.propagate_msgs()?,
+            // receive a new message from the bus
             Some(msg) = new_msg => self.process_new_msg(msg)?,
         };
 
-        Ok(Some(()))
+        // all good, instruct we can continue
+        Ok(true)
     }
 }
 
-async fn run_mux<T: HasBytesSize>(mut mux: Mux<T>) {
-    loop {
-        if let Err(error) = mux.step().await {
-            todo!("Unmanaged error: {error:?}")
-        }
-    }
+async fn run_mux<T: HasBytesSize>(mut mux: Mux<T>) -> Result<()> {
+    while mux.step().await? {}
+
+    Ok(())
 }

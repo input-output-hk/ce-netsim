@@ -1,5 +1,6 @@
 pub(crate) mod defaults;
 mod msg;
+mod shutdown;
 mod sim_context;
 mod sim_id;
 mod sim_link;
@@ -12,6 +13,7 @@ pub use self::{
 };
 pub(crate) use self::{
     msg::Msg,
+    shutdown::{ShutdownController, ShutdownReceiver},
     sim_link::{link, SimDownLink, SimUpLink},
     time_queue::TimeQueue,
 };
