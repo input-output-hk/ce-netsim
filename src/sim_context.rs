@@ -6,10 +6,17 @@ use anyhow::{anyhow, bail, Result};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
-    time::Duration,
+    time::{Duration, SystemTime},
 };
-use tokio::sync::mpsc;
-use tokio::{select, task::JoinHandle};
+use tokio::{
+    select,
+    task::JoinHandle,
+    time::{sleep_until, Instant},
+};
+use tokio::{
+    sync::mpsc,
+    time::{sleep, Sleep},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SimConfiguration {
@@ -145,6 +152,14 @@ where
         Ok(())
     }
 
+    fn propagate_msgs(&mut self) -> Result<()> {
+        for msg in self.msgs.pop_all_elapsed(SystemTime::now()) {
+            self.propagate_msg(msg)?;
+        }
+
+        Ok(())
+    }
+
     fn propagate_msg(&mut self, msg: Msg<T>) -> Result<()> {
         let dst = msg.to();
         let mut addresses = self
@@ -171,14 +186,30 @@ where
         Ok(())
     }
 
+    fn wait_next_msg(&self) -> Sleep {
+        match self.msgs.time_to_next_msg() {
+            // if we are empty, we can wait a long time
+            None => sleep_until(Instant::now() + Duration::from_secs(5)),
+            // take the due time and compute the lapsed between now and then
+            Some(then) => {
+                let delay = if let Err(error) = then.elapsed() {
+                    error.duration()
+                } else {
+                    Duration::ZERO
+                };
+                sleep(delay)
+            }
+        }
+    }
+
     async fn step(&mut self) -> Result<Option<()>> {
+        let due_msg = self.wait_next_msg();
         let new_msg = self.bus.recv();
-        let due_msg = self.msgs.wait_pop();
 
         select! {
             biased;
 
-            Some(msg) = due_msg => self.propagate_msg(msg)?,
+            _ = due_msg => self.propagate_msgs()?,
             Some(msg) = new_msg => self.process_new_msg(msg)?,
         };
 
