@@ -2,7 +2,6 @@ use crate::msg::MsgWith;
 use crate::Msg;
 use core::cmp::Reverse;
 use std::{collections::BinaryHeap, time::SystemTime};
-use tokio::time::sleep;
 
 pub struct TimeQueue<T> {
     map: BinaryHeap<Reverse<OrderedByTime<T>>>,
@@ -90,15 +89,6 @@ impl<T> TimeQueue<T> {
         };
         self.map.push(Reverse(OrderedByTime(m)))
     }
-
-    pub async fn wait_pop(&mut self) -> Option<Msg<T>> {
-        let entry = self.map.peek()?;
-        let diff = entry.0.inner().reception_time.elapsed();
-        if let Err(duration) = diff {
-            sleep(duration.duration()).await;
-        };
-        self.pop()
-    }
 }
 
 impl<T> Default for TimeQueue<T> {
@@ -109,71 +99,40 @@ impl<T> Default for TimeQueue<T> {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
-
-    use tokio::time::Instant;
-
-    use crate::SimId;
-
     use super::*;
+    use crate::SimId;
+    use std::time::{Duration, SystemTime};
 
-    #[tokio::test]
-    async fn empty() {
+    #[test]
+    fn empty() {
         let mut c = TimeQueue::<()>::new();
 
         assert!(c.is_empty());
         assert_eq!(c.len(), 0);
         assert!(c.pop().is_none());
-        assert!(c.wait_pop().await.is_none());
+        assert!(c.time_to_next_msg().is_none());
     }
 
     const SIM_ID: SimId = SimId::new("a sim-id");
+    const DURATION: Duration = Duration::from_millis(1);
 
-    #[tokio::test]
-    async fn passed_entry() {
+    #[test]
+    fn entry() {
         let mut c = TimeQueue::<()>::new();
+        let entry_sent_time = SystemTime::now();
+        let entry_due_time = entry_sent_time + DURATION;
+        let current_time = SystemTime::now() + 2 * DURATION;
 
-        c.push(
-            SystemTime::now() - Duration::from_secs(1),
-            Msg::new(SIM_ID, SIM_ID, ()),
-        );
+        c.push(entry_due_time, Msg::new(SIM_ID, SIM_ID, ()));
 
         assert!(!c.is_empty());
         assert_eq!(c.len(), 1);
+        let due_time = c.time_to_next_msg().unwrap();
+        assert_eq!(due_time, entry_due_time);
 
-        let instant = Instant::now();
-        let Some(_) = c.wait_pop().await else {
-            panic!("The msg should be returned")
-        };
-        let elapsed = instant.elapsed();
-        assert!(
-            elapsed.as_millis() < 5,
-            "Should be instantaneous: {elapsed:?}"
-        );
-
-        assert!(c.is_empty());
-    }
-
-    #[tokio::test]
-    async fn future_entry() {
-        let mut c = TimeQueue::<()>::new();
-        const DURATION: Duration = Duration::from_millis(500);
-
-        c.push(SystemTime::now() + DURATION, Msg::new(SIM_ID, SIM_ID, ()));
-
-        assert!(!c.is_empty());
-        assert_eq!(c.len(), 1);
-
-        let instant = Instant::now();
-        let Some(_) = c.wait_pop().await else {
-            panic!("The msg should be returned")
-        };
-        let elapsed = instant.elapsed();
-        let min = DURATION.as_millis() - 50;
-        assert!(
-            elapsed.as_millis() > min,
-            "expecting elapsed time ({elapsed:?}) > min duration ({min}ms)"
-        );
+        assert!(c.pop_all_elapsed(entry_sent_time).is_empty());
+        let entries = c.pop_all_elapsed(current_time);
+        assert_eq!(entries.len(), 1);
 
         assert!(c.is_empty());
     }
