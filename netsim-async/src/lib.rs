@@ -27,8 +27,8 @@ impl<T> SimSocket<T> {
         }
     }
 
-    pub fn id(&self) -> &SimId {
-        &self.id
+    pub fn id(&self) -> SimId {
+        self.id
     }
 }
 
@@ -37,13 +37,13 @@ where
     T: HasBytesSize,
 {
     pub fn send_to(&self, to: SimId, msg: T) -> Result<()> {
-        let msg = Msg::new(self.id().clone(), to, msg);
+        let msg = Msg::new(self.id(), to, msg);
         self.up.send(msg)
     }
 
     pub async fn recv(&mut self) -> Option<(SimId, T)> {
         let msg = self.down.recv().await?;
 
-        Some((msg.from().clone(), msg.into_content()))
+        Some((msg.from(), msg.into_content()))
     }
 }

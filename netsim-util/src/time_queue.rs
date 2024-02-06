@@ -114,7 +114,7 @@ mod tests {
         assert!(c.time_to_next_msg().is_none());
     }
 
-    const SIM_ID: SimId = SimId::new("a sim-id");
+    const SIM_ID: SimId = SimId::new(0);
     const DURATION: Duration = Duration::from_millis(1);
 
     #[test]

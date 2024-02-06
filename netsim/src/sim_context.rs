@@ -5,7 +5,7 @@ use crate::{
 use anyhow::{anyhow, bail, Context as _, Result};
 use ce_netsim_util::{
     sim_context::{new_context, SimContextCore, SimMuxCore},
-    HasBytesSize, Msg, SimId,
+    HasBytesSize, Msg,
 };
 use std::{
     sync::{
@@ -80,19 +80,10 @@ where
     }
 
     /// Open a new [`SimSocket`] with the given configuration
-    pub fn open(
-        &self,
-        address: SimId,
-        configuration: SimSocketConfiguration,
-    ) -> Result<SimSocket<T>> {
+    pub fn open(&mut self, configuration: SimSocketConfiguration) -> Result<SimSocket<T>> {
         let (up, down) = link(configuration.download_bytes_per_sec);
 
-        let mut addresses = self
-            .core
-            .links()
-            .lock()
-            .map_err(|error| anyhow!("Failed to register address, mutex poisoned {error}"))?;
-        addresses.insert(address.clone(), up);
+        let address = self.core.new_link(up);
 
         Ok(SimSocket::new(address, self.generic_up_link.clone(), down))
     }
@@ -146,7 +137,7 @@ where
             .lock()
             .map_err(|error| anyhow!("Failed to acquire address, mutex poisonned {error}"))?;
 
-        match addresses.entry(dst.clone()) {
+        match addresses.entry(dst) {
             std::collections::hash_map::Entry::Occupied(entry) => {
                 if entry.get().send(msg).is_err() {
                     entry.remove();

@@ -21,6 +21,8 @@ pub trait Link {
 pub struct SimContextCore<UpLink> {
     configuration: Arc<SimConfiguration>,
 
+    next_sim_id: SimId,
+
     links: Links<UpLink>,
 }
 
@@ -48,8 +50,10 @@ impl<UpLink> SimContextCore<UpLink> {
     fn new(configuration: SimConfiguration) -> Self {
         let configuration = Arc::new(configuration);
         let links = Arc::new(Mutex::new(HashMap::new()));
+        let next_sim_id = SimId::default().next(); // Starts at 1
         Self {
             configuration,
+            next_sim_id,
             links,
         }
     }
@@ -60,6 +64,22 @@ impl<UpLink> SimContextCore<UpLink> {
 
     pub fn links(&self) -> &Links<UpLink> {
         &self.links
+    }
+
+    pub fn new_link(&mut self, link: UpLink) -> SimId {
+        let id = self.next_sim_id;
+
+        let collision = self
+            .links
+            .lock()
+            .expect("Expect the links' Mutex to not be poisonned")
+            .insert(id, link);
+        if collision.is_some() {
+            panic!("Collision of `SimId' detected: {id}");
+        }
+
+        self.next_sim_id = id.next();
+        id
     }
 }
 
@@ -96,9 +116,9 @@ where
             .expect("Under no condition we expect the mutex to be poisoned");
 
         // 2. get the upload speed (the sender of the message)
-        let upload_speed = links.get(msg.from()).map(|link| link.upload_speed())?;
+        let upload_speed = links.get(&msg.from()).map(|link| link.upload_speed())?;
         // 3. get the download speed (the recipient of the message)
-        let download_speed = links.get(msg.to()).map(|link| link.download_speed())?;
+        let download_speed = links.get(&msg.to()).map(|link| link.download_speed())?;
         // 4. the message speed is the minimum value between the upload and download
         Some(cmp::min(upload_speed, download_speed))
     }

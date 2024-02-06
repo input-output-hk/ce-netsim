@@ -25,8 +25,8 @@ impl<T> SimSocket<T> {
         }
     }
 
-    pub fn id(&self) -> &SimId {
-        &self.id
+    pub fn id(&self) -> SimId {
+        self.id
     }
 }
 
@@ -41,7 +41,7 @@ where
     T: HasBytesSize,
 {
     pub fn send_to(&self, to: SimId, msg: T) -> Result<()> {
-        let msg = Msg::new(self.id().clone(), to, msg);
+        let msg = Msg::new(self.id(), to, msg);
         self.up.send(msg)
     }
 
@@ -51,7 +51,7 @@ where
     pub fn recv(&mut self) -> Option<(SimId, T)> {
         let msg = self.down.recv()?;
 
-        Some((msg.from().clone(), msg.into_content()))
+        Some((msg.from(), msg.into_content()))
     }
 
     /// blocking call to receiving message on the channel
@@ -59,7 +59,7 @@ where
     /// returns None if the sending end has disconnected (no more senders)
     pub fn try_recv(&mut self) -> TryRecv<(SimId, T)> {
         match self.down.try_recv() {
-            Ok(msg) => TryRecv::Some((msg.from().clone(), msg.into_content())),
+            Ok(msg) => TryRecv::Some((msg.from(), msg.into_content())),
             Err(mpsc::TryRecvError::Empty) => TryRecv::NoMsg,
             Err(mpsc::TryRecvError::Disconnected) => TryRecv::Disconnected,
         }

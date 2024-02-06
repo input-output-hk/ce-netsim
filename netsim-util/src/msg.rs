@@ -38,12 +38,12 @@ impl<T> Msg<T> {
         }
     }
 
-    pub fn from(&self) -> &SimId {
-        &self.from
+    pub fn from(&self) -> SimId {
+        self.from
     }
 
-    pub fn to(&self) -> &SimId {
-        &self.to
+    pub fn to(&self) -> SimId {
+        self.to
     }
 
     pub fn time(&self) -> SystemTime {

@@ -1,31 +1,22 @@
-use ce_netsim_async::{
-    HasBytesSize as _, SimConfiguration, SimContext, SimId, SimSocketConfiguration,
-};
+use ce_netsim_async::{HasBytesSize as _, SimConfiguration, SimContext, SimSocketConfiguration};
 use tokio::time::Instant;
 
-const NET1: SimId = SimId::new("net1");
-const NET2: SimId = SimId::new("net2");
 const MSG: &str = "Hello World!";
 
 #[tokio::main]
 async fn main() {
     let configuration = SimConfiguration {};
-    let context: SimContext<&'static str> = SimContext::new(configuration).await;
+    let mut context: SimContext<&'static str> = SimContext::new(configuration).await;
 
-    let net1 = context
-        .open(NET1, SimSocketConfiguration::default())
-        .unwrap();
+    let net1 = context.open(SimSocketConfiguration::default()).unwrap();
     let mut net2 = context
-        .open(
-            NET2,
-            SimSocketConfiguration {
-                download_bytes_per_sec: MSG.bytes_size(),
-                ..Default::default()
-            },
-        )
+        .open(SimSocketConfiguration {
+            download_bytes_per_sec: MSG.bytes_size(),
+            ..Default::default()
+        })
         .unwrap();
 
-    net1.send_to(NET2, MSG).unwrap();
+    net1.send_to(net2.id(), MSG).unwrap();
 
     let instant = Instant::now();
     let Some((from, msg)) = net2.recv().await else {
@@ -33,9 +24,13 @@ async fn main() {
     };
     let elapsed = instant.elapsed();
 
-    assert_eq!(from, NET1);
+    assert_eq!(from, net1.id());
 
-    println!("{from} -> {NET2} ({}ms): {msg}", elapsed.as_millis());
+    println!(
+        "{from} -> {net2} ({}ms): {msg}",
+        elapsed.as_millis(),
+        net2 = net2.id()
+    );
 
     context.shutdown().await.unwrap();
 }
