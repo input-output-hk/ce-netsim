@@ -72,7 +72,9 @@ impl<T> TimeQueue<T> {
                 None => break,
                 Some(msg) => {
                     if msg.0.inner().reception_time <= time {
-                        let msg = self.pop().unwrap();
+                        let msg = self
+                            .pop()
+                            .expect("We just peeked the map, so a pop should always work");
                         msgs.push(msg)
                     } else {
                         break;
@@ -128,7 +130,9 @@ mod tests {
 
         assert!(!c.is_empty());
         assert_eq!(c.len(), 1);
-        let due_time = c.time_to_next_msg().unwrap();
+        let due_time = c
+            .time_to_next_msg()
+            .expect("There should be at least one object in the queue");
         assert_eq!(due_time, entry_due_time);
 
         assert!(c.pop_all_elapsed(entry_sent_time).is_empty());
