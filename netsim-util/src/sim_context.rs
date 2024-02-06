@@ -1,5 +1,5 @@
 use crate::{HasBytesSize, Msg, SimConfiguration, SimId, TimeQueue};
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use std::{
     cmp,
     collections::HashMap,
@@ -50,7 +50,7 @@ impl<UpLink> SimContextCore<UpLink> {
     fn new(configuration: SimConfiguration) -> Self {
         let configuration = Arc::new(configuration);
         let links = Arc::new(Mutex::new(HashMap::new()));
-        let next_sim_id = SimId::default().next(); // Starts at 1
+        let next_sim_id = SimId::ZERO.next(); // Starts at 1
         Self {
             configuration,
             next_sim_id,
@@ -66,20 +66,22 @@ impl<UpLink> SimContextCore<UpLink> {
         &self.links
     }
 
-    pub fn new_link(&mut self, link: UpLink) -> SimId {
+    pub fn new_link(&mut self, link: UpLink) -> Result<SimId> {
         let id = self.next_sim_id;
 
         let collision = self
             .links
             .lock()
-            .expect("Expect the links' Mutex to not be poisonned")
+            .map_err(|error| anyhow!("Failed to lock on the links: {error}"))?
             .insert(id, link);
-        if collision.is_some() {
-            panic!("Collision of `SimId' detected: {id}");
-        }
+
+        debug_assert!(
+            collision.is_none(),
+            "Collision of SimId (here: {id}) shouldn't be possible"
+        );
 
         self.next_sim_id = id.next();
-        id
+        Ok(id)
     }
 }
 

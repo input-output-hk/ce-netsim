@@ -1,10 +1,12 @@
 use std::fmt;
 
 /// The identifier of a peer in the SimNetwork
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SimId(u64);
 
 impl SimId {
+    pub(crate) const ZERO: Self = SimId::new(0);
+
     pub(crate) const fn new(id: u64) -> Self {
         Self(id)
     }

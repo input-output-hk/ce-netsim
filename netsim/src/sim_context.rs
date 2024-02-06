@@ -83,7 +83,10 @@ where
     pub fn open(&mut self, configuration: SimSocketConfiguration) -> Result<SimSocket<T>> {
         let (up, down) = link(configuration.download_bytes_per_sec);
 
-        let address = self.core.new_link(up);
+        let address = self
+            .core
+            .new_link(up)
+            .context("Failed to reserve a new SimId")?;
 
         Ok(SimSocket::new(address, self.generic_up_link.clone(), down))
     }
@@ -95,7 +98,7 @@ where
             Ok(Ok(())) => Ok(()),
             Ok(Err(error)) => Err(error).context("NetSim Multiplexer error"),
             Err(error) => {
-                bail!("NetSim Multiplexer panick: {error:?}")
+                bail!("NetSim Multiplexer panicked: {error:?}")
             }
         }
     }
