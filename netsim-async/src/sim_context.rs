@@ -1,8 +1,9 @@
 use crate::{
-    link, HasBytesSize, Msg, ShutdownController, ShutdownReceiver, SimId, SimSocket,
-    SimSocketConfiguration, SimUpLink, TimeQueue,
+    link, HasBytesSize, Msg, ShutdownController, ShutdownReceiver, SimId, SimSocket, SimUpLink,
+    TimeQueue,
 };
 use anyhow::{anyhow, bail, Context, Result};
+pub use ce_netsim_util::{SimConfiguration, SimSocketConfiguration};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -17,9 +18,6 @@ use tokio::{
     sync::mpsc,
     time::{sleep, Sleep},
 };
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub struct SimConfiguration {}
 
 /// the context to keep on in order to continue adding/removing/monitoring nodes
 /// in the sim-ed network.
@@ -103,7 +101,7 @@ where
         address: SimId,
         configuration: SimSocketConfiguration,
     ) -> Result<SimSocket<T>> {
-        let (up, down) = link(configuration.bytes_per_sec);
+        let (up, down) = link(configuration.download_bytes_per_sec);
 
         let mut addresses = self
             .addresses

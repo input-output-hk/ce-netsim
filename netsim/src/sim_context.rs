@@ -1,6 +1,6 @@
 use crate::{
     sim_link::{link, SimUpLink},
-    SimSocket, SimSocketConfiguration,
+    SimConfiguration, SimSocket, SimSocketConfiguration,
 };
 use anyhow::{anyhow, bail, Context as _, Result};
 use ce_netsim_util::{HasBytesSize, Msg, SimId, TimeQueue};
@@ -13,9 +13,6 @@ use std::{
     thread,
     time::{Duration, SystemTime},
 };
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub struct SimConfiguration;
 
 type Addresses<T> = Arc<Mutex<HashMap<SimId, SimUpLink<T>>>>;
 
@@ -109,7 +106,7 @@ where
         address: SimId,
         configuration: SimSocketConfiguration,
     ) -> Result<SimSocket<T>> {
-        let (up, down) = link(configuration.bytes_per_sec);
+        let (up, down) = link(configuration.download_bytes_per_sec);
 
         let mut addresses = self
             .addresses

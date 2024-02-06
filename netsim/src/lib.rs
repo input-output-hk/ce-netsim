@@ -3,24 +3,12 @@ mod sim_link;
 
 use std::sync::mpsc;
 
-pub use crate::sim_context::{SimConfiguration, SimContext};
+pub use crate::sim_context::SimContext;
 use anyhow::Result;
 use ce_netsim_util::Msg;
-pub use ce_netsim_util::{defaults, HasBytesSize, SimId};
+pub use ce_netsim_util::{defaults, HasBytesSize, SimConfiguration, SimId, SimSocketConfiguration};
 use sim_context::MuxSend;
 use sim_link::SimDownLink;
-
-pub struct SimSocketConfiguration {
-    pub bytes_per_sec: u64,
-}
-
-impl Default for SimSocketConfiguration {
-    fn default() -> Self {
-        Self {
-            bytes_per_sec: defaults::DEFAULT_BYTES_PER_SEC,
-        }
-    }
-}
 
 pub struct SimSocket<T> {
     id: SimId,

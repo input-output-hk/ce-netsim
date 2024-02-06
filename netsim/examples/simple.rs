@@ -16,7 +16,8 @@ fn main() {
         .open(
             NET2,
             SimSocketConfiguration {
-                bytes_per_sec: MSG.bytes_size(),
+                download_bytes_per_sec: MSG.bytes_size(),
+                ..Default::default()
             },
         )
         .unwrap();
