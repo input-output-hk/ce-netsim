@@ -1,4 +1,3 @@
-pub(crate) mod defaults;
 mod shutdown;
 mod sim_context;
 mod sim_link;
@@ -10,8 +9,8 @@ pub(crate) use self::{
     sim_link::{link, SimDownLink, SimUpLink},
 };
 use anyhow::Result;
+pub(crate) use ce_netsim_util::{defaults, Msg, TimeQueue};
 pub use ce_netsim_util::{HasBytesSize, SimId};
-pub(crate) use ce_netsim_util::{Msg, TimeQueue};
 
 /// configuration for a given [`SimSocket`]
 pub struct SimSocketConfiguration {

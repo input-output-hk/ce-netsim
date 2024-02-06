@@ -6,7 +6,7 @@ use std::sync::mpsc;
 pub use crate::sim_context::{SimConfiguration, SimContext};
 use anyhow::Result;
 use ce_netsim_util::Msg;
-pub use ce_netsim_util::{HasBytesSize, SimId};
+pub use ce_netsim_util::{defaults, HasBytesSize, SimId};
 use sim_context::MuxSend;
 use sim_link::SimDownLink;
 
@@ -17,7 +17,7 @@ pub struct SimSocketConfiguration {
 impl Default for SimSocketConfiguration {
     fn default() -> Self {
         Self {
-            bytes_per_sec: 1_024 * 1_024 * 1_024,
+            bytes_per_sec: defaults::DEFAULT_BYTES_PER_SEC,
         }
     }
 }
