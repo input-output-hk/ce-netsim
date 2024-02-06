@@ -165,7 +165,8 @@ where
 
         let messages = self.msgs.pop_all_elapsed(SystemTime::now());
         let filtered_messages =
-            messages.into_iter()
+            messages
+                .into_iter()
                 .filter(|msg| {
                     match self.msg_filter_policy.maybe_drop(msg) {
                         MsgPolicyResult::Drop => false,
@@ -176,14 +177,6 @@ where
         Ok(filtered_messages)
     }
 
-    // let filtered_messages = messages
-    //     .iter() // Iterate over each message
-    //     .filter(|msg| match self.msg_filter_policy.maybe_drop(msg) {
-    //         MsgPolicyResult::Drop => false,
-    //         _ => true,
-    //     }) // Filter out messages based on the DropDecision returned by maybe_drop
-    //     .collect();
-    // Ok(filtered_messages);
     /// get the earliest time to the next message
     ///
     /// Function returns `None` if there are no due messages
