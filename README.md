@@ -30,6 +30,6 @@ cargo run --example simple_async
 
 - [ ] rename `netsim-util` to `netsim-core`
 - [x] move configurations to the `netsim-core` crate (`SimConfiguration` & `SimSocketConfiguration`)
-- [ ] move all of the common features of the `SimContext` and `SimMux` to the `netsim-core`
+- [x] move all of the common features of the `SimContext` and `SimMux` to the `netsim-core`
 - [ ] add policies to mitigate the dropping of packets
 - [ ] update Context/Mux to distribute the `SimId`
