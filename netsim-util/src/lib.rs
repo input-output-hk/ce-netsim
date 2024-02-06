@@ -1,5 +1,6 @@
 pub mod defaults;
 mod msg;
+pub mod sim_context;
 mod sim_id;
 mod time_queue;
 

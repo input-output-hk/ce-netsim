@@ -1,14 +1,10 @@
 use crate::{
     link, HasBytesSize, Msg, ShutdownController, ShutdownReceiver, SimId, SimSocket, SimUpLink,
-    TimeQueue,
 };
 use anyhow::{anyhow, bail, Context, Result};
+use ce_netsim_util::sim_context::{new_context, SimContextCore, SimMuxCore};
 pub use ce_netsim_util::{SimConfiguration, SimSocketConfiguration};
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-    time::{Duration, SystemTime},
-};
+use std::time::Duration;
 use tokio::{
     select,
     task::JoinHandle,
@@ -22,16 +18,9 @@ use tokio::{
 /// the context to keep on in order to continue adding/removing/monitoring nodes
 /// in the sim-ed network.
 pub struct SimContext<T> {
-    #[allow(unused)]
-    configuration: SimConfiguration,
+    core: SimContextCore<SimUpLink<T>>,
 
     generic_up_link: MuxSend<T>,
-
-    /// new connection will add they UpLink side on this
-    /// value for the [`Mux`] to redirect messages when
-    /// it's time for it
-    addresses: Addresses<T>,
-
     shutdown: ShutdownController,
     mux_handler: JoinHandle<Result<()>>,
 }
@@ -57,15 +46,13 @@ impl<T: HasBytesSize> MuxSend<T> {
     }
 }
 
-type Addresses<T> = Arc<Mutex<HashMap<SimId, SimUpLink<T>>>>;
+struct Mux<T>
+where
+    T: HasBytesSize,
+{
+    core: SimMuxCore<SimUpLink<T>>,
 
-struct Mux<T> {
     bus: mpsc::UnboundedReceiver<Msg<T>>,
-
-    msgs: TimeQueue<T>,
-
-    /// new addresses are registered on the [`SimContext`] side
-    addresses: Addresses<T>,
 
     shutdown: ShutdownReceiver,
 }
@@ -79,17 +66,17 @@ where
     /// for a clean shutdown of the background process.
     ///
     pub async fn new(configuration: SimConfiguration) -> Self {
-        let addresses = Addresses::default();
+        let (sim_context_core, sim_mux_core) = new_context(configuration);
+
         let (generic_up_link, bus) = mpsc::unbounded_channel();
         let shutdown = ShutdownController::new();
 
-        let mux = Mux::new(shutdown.subscribe(), bus, Arc::clone(&addresses));
+        let mux = Mux::new(sim_mux_core, shutdown.subscribe(), bus);
         let mux_handler = tokio::spawn(run_mux(mux));
 
         Self {
-            configuration,
+            core: sim_context_core,
             generic_up_link: MuxSend(generic_up_link),
-            addresses,
             shutdown,
             mux_handler,
         }
@@ -104,7 +91,8 @@ where
         let (up, down) = link(configuration.download_bytes_per_sec);
 
         let mut addresses = self
-            .addresses
+            .core
+            .links()
             .lock()
             .map_err(|error| anyhow!("Failed to register address, mutex poisoned {error}"))?;
         addresses.insert(address.clone(), up);
@@ -132,55 +120,28 @@ where
     }
 }
 
-impl<T> Mux<T> {
-    fn new(
-        shutdown: ShutdownReceiver,
-        bus: mpsc::UnboundedReceiver<Msg<T>>,
-        addresses: Addresses<T>,
-    ) -> Self {
-        Self {
-            bus,
-            addresses,
-            msgs: TimeQueue::new(),
-            shutdown,
-        }
-    }
-}
-
 impl<T> Mux<T>
 where
     T: HasBytesSize,
 {
+    fn new(
+        core: SimMuxCore<SimUpLink<T>>,
+        shutdown: ShutdownReceiver,
+        bus: mpsc::UnboundedReceiver<Msg<T>>,
+    ) -> Self {
+        Self {
+            core,
+            bus,
+            shutdown,
+        }
+    }
+
     fn process_new_msg(&mut self, msg: Msg<T>) -> Result<()> {
-        // 1. get the message time
-        let sent_time = msg.time();
-        // 2. get the link speed (bytes per seconds)
-        let link_speed = {
-            let dst = msg.to().clone();
-            let mut addresses = self.addresses.lock().unwrap();
-
-            match addresses.entry(dst) {
-                std::collections::hash_map::Entry::Occupied(entry) => entry.get().speed(),
-                std::collections::hash_map::Entry::Vacant(_) => {
-                    // by itself this is not an error, just someone sending something
-                    // to an unknown address
-                    return Ok(());
-                }
-            }
-        };
-        // 3. compute the msg delay
-        let content_size = msg.content().bytes_size();
-        let delay = Duration::from_secs(content_size / link_speed);
-
-        // 4. compute the due time
-        let due_by = sent_time + delay;
-
-        self.msgs.push(due_by, msg);
-        Ok(())
+        self.core.inbound_message(msg)
     }
 
     fn propagate_msgs(&mut self) -> Result<()> {
-        for msg in self.msgs.pop_all_elapsed(SystemTime::now()) {
+        for msg in self.core.outbound_messages()? {
             self.propagate_msg(msg)?;
         }
 
@@ -190,7 +151,8 @@ where
     fn propagate_msg(&mut self, msg: Msg<T>) -> Result<()> {
         let dst = msg.to();
         let mut addresses = self
-            .addresses
+            .core
+            .links()
             .lock()
             .map_err(|error| anyhow!("Failed to acquire address, mutex poisonned {error}"))?;
 
@@ -214,7 +176,7 @@ where
     }
 
     fn wait_next_msg(&self) -> Sleep {
-        match self.msgs.time_to_next_msg() {
+        match self.core.earliest_outbound_time() {
             // if we are empty, we can wait a long time
             None => sleep_until(Instant::now() + Duration::from_secs(5)),
             // take the due time and compute the lapsed between now and then

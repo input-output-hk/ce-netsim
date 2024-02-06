@@ -1,5 +1,6 @@
 use crate::{HasBytesSize, Msg};
 use anyhow::{anyhow, Result};
+use ce_netsim_util::sim_context::Link;
 use tokio::sync::mpsc;
 
 pub fn link<T>(bytes_per_sec: u64) -> (SimUpLink<T>, SimDownLink<T>) {
@@ -12,6 +13,22 @@ pub fn link<T>(bytes_per_sec: u64) -> (SimUpLink<T>, SimDownLink<T>) {
     let down = SimDownLink { receiver };
 
     (up, down)
+}
+
+impl<T> Link for SimUpLink<T>
+where
+    T: HasBytesSize,
+{
+    type Msg = T;
+
+    fn download_speed(&self) -> u64 {
+        self.bytes_per_sec
+    }
+
+    fn upload_speed(&self) -> u64 {
+        // TODO
+        u64::MAX
+    }
 }
 
 pub struct SimUpLink<T> {
@@ -36,12 +53,6 @@ where
                 size = error.0.content().bytes_size(),
             )
         })
-    }
-
-    /// bytes per seconds
-    #[inline]
-    pub(crate) fn speed(&self) -> u64 {
-        self.bytes_per_sec
     }
 
     #[inline]
