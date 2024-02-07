@@ -3,7 +3,7 @@ use crate::{
     SimConfiguration, SimSocket, SimSocketConfiguration,
 };
 use anyhow::{anyhow, bail, Context as _, Result};
-use ce_netsim_util::{
+use ce_netsim_core::{
     sim_context::{new_context, SimContextCore, SimMuxCore},
     HasBytesSize, Msg,
 };

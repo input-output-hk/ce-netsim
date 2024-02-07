@@ -7,4 +7,4 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.79"
-ce-netsim-util = { path = "../netsim-util", version = "0.1" }
+ce-netsim-core = { path = "../netsim-core", version = "0.1" }

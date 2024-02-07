@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use ce_netsim_util::{sim_context::Link, HasBytesSize, Msg};
+use ce_netsim_core::{sim_context::Link, HasBytesSize, Msg};
 use std::sync::mpsc;
 
 pub fn link<T>(bytes_per_sec: u64) -> (SimUpLink<T>, SimDownLink<T>) {

@@ -9,8 +9,8 @@ pub(crate) use self::{
     sim_link::{link, SimDownLink, SimUpLink},
 };
 use anyhow::Result;
-pub(crate) use ce_netsim_util::Msg;
-pub use ce_netsim_util::{HasBytesSize, SimConfiguration, SimId, SimSocketConfiguration};
+pub(crate) use ce_netsim_core::Msg;
+pub use ce_netsim_core::{HasBytesSize, SimConfiguration, SimId, SimSocketConfiguration};
 
 pub struct SimSocket<T> {
     id: SimId,

@@ -1,7 +1,7 @@
 use crate::{link, HasBytesSize, Msg, ShutdownController, ShutdownReceiver, SimSocket, SimUpLink};
 use anyhow::{anyhow, bail, Context, Result};
-use ce_netsim_util::sim_context::{new_context, SimContextCore, SimMuxCore};
-pub use ce_netsim_util::{SimConfiguration, SimSocketConfiguration};
+use ce_netsim_core::sim_context::{new_context, SimContextCore, SimMuxCore};
+pub use ce_netsim_core::{SimConfiguration, SimSocketConfiguration};
 use std::time::Duration;
 use tokio::{
     select,
