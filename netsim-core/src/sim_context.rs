@@ -144,26 +144,30 @@ where
         // 1. get the message sent time
         let sent_time = msg.time();
         match self.configuration.msg_policy.recv(&msg) {
-            Outcome::Drop(_) => {}
-            Outcome::PassThrough(_) => {}
-            Outcome::Throttle { .. } => {}
+            Outcome::Drop(_) => {
+
+            }
+            Outcome::PassThrough(_) => {
+                // 2. get the message speed
+                let Some(speed) = self.compute_message_speed(&msg) else {
+                    // if we don't have a message speed, it means we don't have
+                    // recipients or senders for this message, and we can ignore
+                    // it.
+                    return Ok(());
+                };
+                // 3. compute the delay of the message
+                let content_size = msg.content().bytes_size();
+                let delay = Duration::from_secs(content_size / speed);
+                // 4. compute the due by time
+                let due_by = sent_time + delay;
+                self.msgs.push(due_by, msg);
+            }
+            Outcome::Throttle { until, msg: m } => {
+                self.msgs.push(until, msg);
+            }
         }
-        // 2. get the message speed
-        let Some(speed) = self.compute_message_speed(&msg) else {
-            // if we don't have a message speed, it means we don't have
-            // recipients or senders for this message, and we can ignore
-            // it.
-            return Ok(());
-        };
-        // 3. compute the delay of the message
-        let content_size = msg.content().bytes_size();
-        let delay = Duration::from_secs(content_size / speed);
-        // 4. compute the due by time
-        let due_by = sent_time + delay;
-
-        self.msgs.push(due_by, msg);
-
         Ok(())
+
     }
 
     /// function to returns all the outbound messages
