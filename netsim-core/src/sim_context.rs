@@ -6,6 +6,7 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, SystemTime},
 };
+use crate::msg_policy::{MessagePolicy, MsgPolicy, Outcome};
 
 /// the collections of up links to other sockets
 ///
@@ -32,10 +33,12 @@ pub struct SimMuxCore<UpLink: Link> {
     links: Links<UpLink>,
 
     msgs: TimeQueue<UpLink::Msg>,
+
 }
 
 pub fn new_context<UpLink: Link>(
     configuration: SimConfiguration,
+
 ) -> (SimContextCore<UpLink>, SimMuxCore<UpLink>) {
     let context = SimContextCore::new(configuration);
     let mux = SimMuxCore::new(
@@ -132,6 +135,11 @@ where
     pub fn inbound_message(&mut self, msg: Msg<UpLink::Msg>) -> Result<()> {
         // 1. get the message sent time
         let sent_time = msg.time();
+        match self.configuration.msg_policy.recv(&msg) {
+            Outcome::Drop(_) => {}
+            Outcome::PassThrough(_) => {}
+            Outcome::Throttle { .. } => {}
+        }
         // 2. get the message speed
         let Some(speed) = self.compute_message_speed(&msg) else {
             // if we don't have a message speed, it means we don't have
