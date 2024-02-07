@@ -1,11 +1,13 @@
 pub mod defaults;
 mod msg;
+mod name_service;
 pub mod sim_context;
 mod sim_id;
 mod time_queue;
 
 pub use self::{
     msg::{HasBytesSize, Msg, MsgWith},
+    name_service::NameService,
     sim_id::SimId,
     time_queue::TimeQueue,
 };

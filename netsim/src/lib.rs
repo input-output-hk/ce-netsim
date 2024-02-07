@@ -6,7 +6,9 @@ use std::sync::mpsc;
 pub use crate::sim_context::SimContext;
 use anyhow::Result;
 use ce_netsim_core::Msg;
-pub use ce_netsim_core::{defaults, HasBytesSize, SimConfiguration, SimId, SimSocketConfiguration};
+pub use ce_netsim_core::{
+    defaults, HasBytesSize, NameService, SimConfiguration, SimId, SimSocketConfiguration,
+};
 use sim_context::MuxSend;
 use sim_link::SimDownLink;
 
