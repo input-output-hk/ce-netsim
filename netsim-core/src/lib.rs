@@ -1,5 +1,6 @@
 pub mod defaults;
 mod msg;
+mod name_service;
 pub mod sim_context;
 mod sim_id;
 mod time_queue;
@@ -9,6 +10,7 @@ use crate::msg_policy::MessagePolicy;
 use crate::msg_policy::MessagePolicy::DefaultPolicy;
 pub use self::{
     msg::{HasBytesSize, Msg, MsgWith},
+    name_service::NameService,
     sim_id::SimId,
     time_queue::TimeQueue,
 };

@@ -1,4 +1,4 @@
-use crate::{HasBytesSize, Msg, SimConfiguration, SimId, TimeQueue};
+use crate::{HasBytesSize, Msg, NameService, SimConfiguration, SimId, TimeQueue};
 use anyhow::{anyhow, Result};
 use std::{
     cmp,
@@ -21,6 +21,8 @@ pub trait Link {
 
 pub struct SimContextCore<UpLink> {
     configuration: Arc<SimConfiguration>,
+
+    ns: NameService,
 
     next_sim_id: SimId,
 
@@ -54,7 +56,9 @@ impl<UpLink> SimContextCore<UpLink> {
         let configuration = Arc::new(configuration);
         let links = Arc::new(Mutex::new(HashMap::new()));
         let next_sim_id = SimId::ZERO.next(); // Starts at 1
+        let ns = NameService::new();
         Self {
+            ns,
             configuration,
             next_sim_id,
             links,
@@ -67,6 +71,10 @@ impl<UpLink> SimContextCore<UpLink> {
 
     pub fn links(&self) -> &Links<UpLink> {
         &self.links
+    }
+
+    pub fn ns(&self) -> &NameService {
+        &self.ns
     }
 
     pub fn new_link(&mut self, link: UpLink) -> Result<SimId> {
