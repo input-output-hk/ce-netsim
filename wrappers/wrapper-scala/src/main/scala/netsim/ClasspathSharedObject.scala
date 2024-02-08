@@ -15,7 +15,7 @@ object ClasspathSharedObject {
 
 
   def createTempFolderWithExtractedLibs: Path = {
-    val result = Files.createTempDirectory(".scala_bbs")
+    val result = Files.createTempDirectory(".scala_netsim")
     val pathToBbsSO = Path.of("/", BuildInfo.pathToNativeObjectsInJar).resolve(BuildInfo.NameOfBbsSharedObject)
     extractToTempFile(pathToBbsSO, result)
     result

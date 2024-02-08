@@ -1,13 +1,9 @@
 package netsim
 
-import netsim.Ops.ByteAryOps
 import buildinfo.BuildInfo
-import helper.ArrayStruct
 import helper.ArrayStruct.Ops.{ByteAryFromPointerRef, ByteAryToPointer}
 import jnr.ffi.byref.NativeLongByReference
-
-import java.util.Base64
-import scala.util.Random
+import netsim.Ops.ByteAryOps
 
 object Main  {
 
