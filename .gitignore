@@ -1,2 +1,4 @@
 /target
-Cargo.lock
+Cargo.lock.idea
+target
+.idea

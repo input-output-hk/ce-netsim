@@ -8,3 +8,11 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.79"
 ce-netsim-core = { path = "../netsim-core", version = "0.1" }
+ffi-support = "0.4.4"
+
+[build-dependencies]
+cbindgen = "0.26.0"
+
+[lib]
+name = "netsim"
+crate-type = ["cdylib"]
