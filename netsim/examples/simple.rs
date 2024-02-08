@@ -4,7 +4,7 @@ use std::time::Instant;
 const MSG: &str = "Hello World!";
 
 fn main() {
-    let configuration = SimConfiguration::default();
+    let configuration = SimConfiguration {};
     let mut context: SimContext<&'static str> = SimContext::new(configuration);
 
     let net1 = context.open(SimSocketConfiguration::default()).unwrap();
