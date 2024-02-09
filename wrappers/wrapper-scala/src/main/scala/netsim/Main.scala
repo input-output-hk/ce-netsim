@@ -12,20 +12,23 @@ object Main  {
       Seq(BuildInfo.TargetForSharedObjectDownload, ".")
     )
     import netsim.runtime
-    val buf = netsim.makeInStruct()
 
-    val nativeLong = new NativeLongByReference()
-    var isOk = netsim.receive_ffi(buf, nativeLong)
-    println(s"isOk? ${isOk}")
-    println(s"addr ${nativeLong.getValue.longValue()}")
-    val asStr = buf.toByteAry.toBase64Str
-    println(s"buf ${asStr}")
-    //println(s"addr ${nativeLong.getValue.longValue()}")
+    var count = 0
 
-    val sendBuf = "HELLO".getBytes.toStructPointer
-
-    isOk = netsim.send_ffi(9, sendBuf)
-    println(s"Send isOk? ${isOk}")
+    while(count < 100000) {
+      count += 1
+      val sendBuf = s"HELLO_${count}".getBytes.toStructPointer
+      var isOk = netsim.send_ffi(count, sendBuf)
+      println(s"Send isOk? ${isOk}")
+      val buf = netsim.makeInStruct()
+      val nativeLong = new NativeLongByReference()
+      isOk = netsim.receive_ffi(buf, nativeLong)
+      if(isOk) {
+        println(s"addr ${nativeLong.getValue.longValue()}")
+        val asStr = new String(buf.toByteAry)
+        println(s"buf ${asStr}")
+      }
+    }
 
     println("Done")
   }
