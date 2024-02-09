@@ -38,9 +38,6 @@ trait NetSimNative {
 
   implicit def runtime: Runtime = Runtime.getRuntime(NetSimNative.this)
 
-  //Trivial function serves as a baseline, can be removed
-  def add_numbers(a: Int@int32_t, b: Int@int32_t): Long@int32_t
-
   def receive_ffi(data: Pointer, addr: NativeLongByReference@Out @u_int64_t): Boolean
 
   def send_ffi(addr: Long@In @u_int64_t, data: Pointer): Boolean

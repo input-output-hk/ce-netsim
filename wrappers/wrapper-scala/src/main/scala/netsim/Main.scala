@@ -4,6 +4,7 @@ import buildinfo.BuildInfo
 import helper.ArrayStruct.Ops.{ByteAryFromPointerRef, ByteAryToPointer}
 import jnr.ffi.byref.NativeLongByReference
 import netsim.Ops.ByteAryOps
+import sss.events.events.EventProcessingEngine
 
 object Main  {
 
@@ -11,26 +12,14 @@ object Main  {
     val netsim = NetSimNative(
       Seq(BuildInfo.TargetForSharedObjectDownload, ".")
     )
-    import netsim.runtime
+    implicit val engine = EventProcessingEngine()
 
-    var count = 0
+    val bridge  = new NetSimBridge(netsim)
+    val testOne = new TestReplica()
 
-    while(count < 100000) {
-      count += 1
-      val sendBuf = s"HELLO_${count}".getBytes.toStructPointer
-      var isOk = netsim.send_ffi(count, sendBuf)
-      println(s"Send isOk? ${isOk}")
-      val buf = netsim.makeInStruct()
-      val nativeLong = new NativeLongByReference()
-      isOk = netsim.receive_ffi(buf, nativeLong)
-      if(isOk) {
-        println(s"addr ${nativeLong.getValue.longValue()}")
-        val asStr = new String(buf.toByteAry)
-        println(s"buf ${asStr}")
-      }
-    }
+    engine.start(1)
 
-    println("Done")
+    println("Started...")
   }
 
 }
