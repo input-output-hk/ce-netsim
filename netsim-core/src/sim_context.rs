@@ -6,7 +6,7 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, SystemTime},
 };
-use crate::msg_policy::{MessagePolicy, MsgPolicy, Outcome};
+
 
 /// the collections of up links to other sockets
 ///
@@ -27,6 +27,7 @@ pub struct SimContextCore<UpLink> {
     next_sim_id: SimId,
 
     links: Links<UpLink>,
+
 }
 
 pub struct SimMuxCore<UpLink: Link> {
@@ -57,11 +58,13 @@ impl<UpLink> SimContextCore<UpLink> {
         let links = Arc::new(Mutex::new(HashMap::new()));
         let next_sim_id = SimId::ZERO.next(); // Starts at 1
         let ns = NameService::new();
+
         Self {
             ns,
             configuration,
             next_sim_id,
             links,
+
         }
     }
 
@@ -143,29 +146,22 @@ where
     pub fn inbound_message(&mut self, msg: Msg<UpLink::Msg>) -> Result<()> {
         // 1. get the message sent time
         let sent_time = msg.time();
-        match self.configuration.msg_policy.recv(&msg) {
-            Outcome::Drop(_) => {
 
-            }
-            Outcome::PassThrough(_) => {
-                // 2. get the message speed
-                let Some(speed) = self.compute_message_speed(&msg) else {
-                    // if we don't have a message speed, it means we don't have
-                    // recipients or senders for this message, and we can ignore
-                    // it.
-                    return Ok(());
-                };
-                // 3. compute the delay of the message
-                let content_size = msg.content().bytes_size();
-                let delay = Duration::from_secs(content_size / speed);
-                // 4. compute the due by time
-                let due_by = sent_time + delay;
-                self.msgs.push(due_by, msg);
-            }
-            Outcome::Throttle { until, msg: m } => {
-                self.msgs.push(until, msg);
-            }
-        }
+        // 2. get the message speed
+        let Some(speed) = self.compute_message_speed(&msg) else {
+            // if we don't have a message speed, it means we don't have
+            // recipients or senders for this message, and we can ignore
+            // it.
+            return Ok(());
+        };
+        // 3. compute the delay of the message
+        let content_size = msg.content().bytes_size();
+        let delay = Duration::from_secs(content_size / speed);
+        // 4. compute the due by time
+        let due_by = sent_time + delay;
+
+        self.msgs.push(due_by, msg);
+
         Ok(())
 
     }

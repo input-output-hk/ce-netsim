@@ -5,7 +5,7 @@ const MSG: &str = "Hello World!";
 
 #[tokio::main]
 async fn main() {
-    let configuration = SimConfiguration::default();
+    let configuration = SimConfiguration {};
     let mut context: SimContext<&'static str> = SimContext::new(configuration).await;
 
     let net1 = context.open(SimSocketConfiguration::default()).unwrap();
