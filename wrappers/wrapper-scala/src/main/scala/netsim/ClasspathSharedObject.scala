@@ -10,13 +10,13 @@ object ClasspathSharedObject {
     libFileName.substring("lib".length, libFileName.length - ".so".length)
 
   def namesOfSharedObjectsToLoad: Seq[String] = Seq(
-    removeLibPrefixAndSuffix(BuildInfo.NameOfBbsSharedObject)
+    removeLibPrefixAndSuffix(BuildInfo.NameOfSharedObject)
   )
 
 
   def createTempFolderWithExtractedLibs: Path = {
     val result = Files.createTempDirectory(".scala_netsim")
-    val pathToBbsSO = Path.of("/", BuildInfo.pathToNativeObjectsInJar).resolve(BuildInfo.NameOfBbsSharedObject)
+    val pathToBbsSO = Path.of("/", BuildInfo.pathToNativeObjectsInJar).resolve(BuildInfo.NameOfSharedObject)
     extractToTempFile(pathToBbsSO, result)
     result
   }
