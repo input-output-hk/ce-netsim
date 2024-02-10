@@ -1,4 +1,5 @@
-use ce_netsim::{HasBytesSize, SimConfiguration, SimContext, SimSocketConfiguration};
+use ce_netsim_core::{HasBytesSize, SimConfiguration, SimSocketConfiguration};
+use netsim::SimContext;
 use std::time::Instant;
 
 const MSG: &str = "Hello World!";
