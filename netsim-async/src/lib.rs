@@ -10,7 +10,10 @@ pub(crate) use self::{
 };
 use anyhow::Result;
 pub(crate) use ce_netsim_core::Msg;
-pub use ce_netsim_core::{HasBytesSize, SimConfiguration, SimId, SimSocketConfiguration};
+pub use ce_netsim_core::{
+    Bandwidth, Edge, EdgePolicy, HasBytesSize, Latency, NodePolicy, PacketLoss, SimConfiguration,
+    SimId,
+};
 
 pub struct SimSocket<T> {
     id: SimId,

@@ -7,7 +7,8 @@ pub use crate::sim_context::SimContext;
 use anyhow::Result;
 use ce_netsim_core::Msg;
 pub use ce_netsim_core::{
-    defaults, HasBytesSize, NameService, SimConfiguration, SimId, SimSocketConfiguration,
+    Bandwidth, Edge, EdgePolicy, HasBytesSize, Latency, NodePolicy, PacketLoss, SimConfiguration,
+    SimId,
 };
 use sim_context::MuxSend;
 use sim_link::SimDownLink;

@@ -1,7 +1,7 @@
 use crate::{link, HasBytesSize, Msg, ShutdownController, ShutdownReceiver, SimSocket, SimUpLink};
 use anyhow::{anyhow, bail, Context, Result};
 use ce_netsim_core::sim_context::{new_context, SimContextCore, SimMuxCore};
-pub use ce_netsim_core::{SimConfiguration, SimSocketConfiguration};
+pub use ce_netsim_core::{Edge, EdgePolicy, NodePolicy, SimConfiguration, SimId};
 use std::time::Duration;
 use tokio::{
     select,
@@ -80,9 +80,17 @@ where
         }
     }
 
+    pub fn set_edge_policy(&mut self, edge: Edge, policy: EdgePolicy) {
+        self.core.set_edge_policy(edge, policy)
+    }
+
+    pub fn set_node_policy(&mut self, node: SimId, policy: NodePolicy) {
+        self.core.set_node_policy(node, policy)
+    }
+
     /// Open a new [`SimSocket`] with the given configuration
-    pub fn open(&mut self, configuration: SimSocketConfiguration) -> Result<SimSocket<T>> {
-        let (up, down) = link(configuration.download_bytes_per_sec);
+    pub fn open(&mut self) -> Result<SimSocket<T>> {
+        let (up, down) = link();
 
         let address = self
             .core

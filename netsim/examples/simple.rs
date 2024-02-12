@@ -1,19 +1,23 @@
-use ce_netsim::{HasBytesSize, SimConfiguration, SimContext, SimSocketConfiguration};
-use std::time::Instant;
+use ce_netsim::{SimConfiguration, SimContext};
+use ce_netsim_core::{Edge, EdgePolicy, Latency};
+use std::time::{Duration, Instant};
 
 const MSG: &str = "Hello World!";
 
 fn main() {
-    let configuration = SimConfiguration {};
+    let configuration = SimConfiguration::default();
     let mut context: SimContext<&'static str> = SimContext::new(configuration);
 
-    let net1 = context.open(SimSocketConfiguration::default()).unwrap();
-    let mut net2 = context
-        .open(SimSocketConfiguration {
-            download_bytes_per_sec: MSG.bytes_size(),
+    let net1 = context.open().unwrap();
+    let mut net2 = context.open().unwrap();
+
+    context.set_edge_policy(
+        Edge::new((net1.id(), net2.id())),
+        EdgePolicy {
+            latency: Latency::new(Duration::from_secs(1)),
             ..Default::default()
-        })
-        .unwrap();
+        },
+    );
 
     net1.send_to(net2.id(), MSG).unwrap();
 

@@ -1,10 +1,12 @@
-use crate::{HasBytesSize, Msg, NameService, SimConfiguration, SimId, TimeQueue};
+use crate::{
+    Edge, EdgePolicy, HasBytesSize, Msg, NameService, NodePolicy, SimConfiguration, SimId,
+    TimeQueue,
+};
 use anyhow::{anyhow, Result};
 use std::{
-    cmp,
     collections::HashMap,
-    sync::{Arc, Mutex},
-    time::{Duration, SystemTime},
+    sync::{Arc, Mutex, RwLock},
+    time::SystemTime,
 };
 
 /// the collections of up links to other sockets
@@ -14,12 +16,10 @@ type Links<UpLink> = Arc<Mutex<HashMap<SimId, UpLink>>>;
 
 pub trait Link {
     type Msg: HasBytesSize;
-    fn download_speed(&self) -> u64;
-    fn upload_speed(&self) -> u64;
 }
 
 pub struct SimContextCore<UpLink> {
-    configuration: Arc<SimConfiguration>,
+    configuration: Arc<RwLock<SimConfiguration>>,
 
     ns: NameService,
 
@@ -29,7 +29,7 @@ pub struct SimContextCore<UpLink> {
 }
 
 pub struct SimMuxCore<UpLink: Link> {
-    configuration: Arc<SimConfiguration>,
+    configuration: Arc<RwLock<SimConfiguration>>,
 
     links: Links<UpLink>,
 
@@ -50,7 +50,7 @@ pub fn new_context<UpLink: Link>(
 
 impl<UpLink> SimContextCore<UpLink> {
     fn new(configuration: SimConfiguration) -> Self {
-        let configuration = Arc::new(configuration);
+        let configuration = Arc::new(RwLock::new(configuration));
         let links = Arc::new(Mutex::new(HashMap::new()));
         let next_sim_id = SimId::ZERO.next(); // Starts at 1
         let ns = NameService::new();
@@ -63,7 +63,7 @@ impl<UpLink> SimContextCore<UpLink> {
         }
     }
 
-    pub fn configuration(&self) -> &Arc<SimConfiguration> {
+    pub fn configuration(&self) -> &Arc<RwLock<SimConfiguration>> {
         &self.configuration
     }
 
@@ -73,6 +73,22 @@ impl<UpLink> SimContextCore<UpLink> {
 
     pub fn ns(&self) -> &NameService {
         &self.ns
+    }
+
+    pub fn set_edge_policy(&mut self, edge: Edge, policy: EdgePolicy) {
+        self.configuration
+            .write()
+            .unwrap()
+            .policy
+            .set_edge_policy(edge, policy)
+    }
+
+    pub fn set_node_policy(&mut self, node: SimId, policy: NodePolicy) {
+        self.configuration
+            .write()
+            .unwrap()
+            .policy
+            .set_node_policy(node, policy)
     }
 
     pub fn new_link(&mut self, link: UpLink) -> Result<SimId> {
@@ -98,7 +114,7 @@ impl<UpLink> SimMuxCore<UpLink>
 where
     UpLink: Link,
 {
-    fn new(configuration: Arc<SimConfiguration>, links: Links<UpLink>) -> Self {
+    fn new(configuration: Arc<RwLock<SimConfiguration>>, links: Links<UpLink>) -> Self {
         let msgs = TimeQueue::new();
         Self {
             configuration,
@@ -107,7 +123,7 @@ where
         }
     }
 
-    pub fn configuration(&self) -> &Arc<SimConfiguration> {
+    pub fn configuration(&self) -> &Arc<RwLock<SimConfiguration>> {
         &self.configuration
     }
 
@@ -115,45 +131,17 @@ where
         &self.links
     }
 
-    /// compute the message speed (bytes per second) of a given message
-    ///
-    /// Will return `None` if there are no senders or recipients for this message
-    fn compute_message_speed(&self, msg: &Msg<UpLink::Msg>) -> Option<u64> {
-        // lock the links so we can query the recipient's link and the sender's link
-        // and get the necessa
-        let links = self
-            .links
-            .lock()
-            .expect("Under no condition we expect the mutex to be poisoned");
-
-        // 2. get the upload speed (the sender of the message)
-        let upload_speed = links.get(&msg.from()).map(|link| link.upload_speed())?;
-        // 3. get the download speed (the recipient of the message)
-        let download_speed = links.get(&msg.to()).map(|link| link.download_speed())?;
-        // 4. the message speed is the minimum value between the upload and download
-        Some(cmp::min(upload_speed, download_speed))
-    }
-
     /// process an inbound message
     ///
     /// The message propagation speed will be computed based on
     /// the upload, download and general link speed between
     pub fn inbound_message(&mut self, msg: Msg<UpLink::Msg>) -> Result<()> {
-        // 1. get the message sent time
-        let sent_time = msg.time();
-
-        // 2. get the message speed
-        let Some(speed) = self.compute_message_speed(&msg) else {
-            // if we don't have a message speed, it means we don't have
-            // recipients or senders for this message, and we can ignore
-            // it.
-            return Ok(());
-        };
-        // 3. compute the delay of the message
-        let content_size = msg.content().bytes_size();
-        let delay = Duration::from_secs(content_size / speed);
-        // 4. compute the due by time
-        let due_by = sent_time + delay;
+        let due_by = self
+            .configuration
+            .read()
+            .unwrap()
+            .policy
+            .message_due_time(&msg);
 
         self.msgs.push(due_by, msg);
 
