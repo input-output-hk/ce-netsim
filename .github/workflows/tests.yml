@@ -1,0 +1,36 @@
+on: [push, pull_request]
+
+name: Tests
+
+jobs:
+  build:
+    name: Build
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Run cargo test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+
+      - name: Run Netsim Example
+        uses: actions-rs/cargo@v1
+        with:
+          command: run --example simple
+
+      - name: Run Netsim Async Example
+        uses: actions-rs/cargo@v1
+        with:
+          command: run --example simple_async
