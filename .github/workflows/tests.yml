@@ -4,7 +4,7 @@ name: Tests
 
 jobs:
   build:
-    name: Build
+    name: Tests
     strategy:
       matrix:
         os: [macos-latest, windows-latest, ubuntu-latest]
