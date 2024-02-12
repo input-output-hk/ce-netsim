@@ -29,12 +29,15 @@ by `net2` from `net1`.
 cargo run --example simple_async
 ```
 
-# TODOs
+# License
 
-- [ ] rename `netsim-util` to `netsim-core`
-- [x] move configurations to the `netsim-core` crate (`SimConfiguration` & `SimSocketConfiguration`)
-- [x] move all of the common features of the `SimContext` and `SimMux` to the `netsim-core`
-- [ ] add policies to mitigate the dropping of packets
-- [x] update Context/Mux to distribute the `SimId`
-- [ ] add command/instruction to go through the bus to the `SimMux` (update on connection speeds etc.)
-- [ ] add name service so that nodes may be addressable by names
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+
+[Apache-2.0](LICENSE)
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
