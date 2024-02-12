@@ -14,6 +14,7 @@ pub trait Ffi {
 }
 
 pub struct DummyFfi {
+    #[allow(clippy::type_complexity)]
     queue: Arc<Mutex<VecDeque<(Address, Vec<u8>)>>>,
 }
 
