@@ -7,7 +7,7 @@ import sbt.Keys.libraryDependencies
 import scala.language.postfixOps
 import shared.Shared.*
 
-name := "ce-netsim"
+name := "ce-netsim-ffi"
 
 scalaVersion := "2.13.10"
 

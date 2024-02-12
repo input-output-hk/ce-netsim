@@ -1,6 +1,5 @@
 mod sim_context;
 mod sim_link;
-mod ffi;
 
 use std::sync::mpsc;
 
