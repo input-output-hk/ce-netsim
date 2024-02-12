@@ -28,9 +28,11 @@ jobs:
       - name: Run Netsim Example
         uses: actions-rs/cargo@v1
         with:
-          command: run --example simple
+          command: run
+          args: --example simple
 
       - name: Run Netsim Async Example
         uses: actions-rs/cargo@v1
         with:
-          command: run --example simple_async
+          command: run
+          args: --example simple_async
