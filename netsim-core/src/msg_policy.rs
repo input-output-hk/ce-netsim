@@ -1,22 +1,20 @@
-
-use std::time::{Duration, SystemTime};
+use crate::{HasBytesSize, Msg, SimId};
+use rand::prelude::*;
 use std::collections::HashMap;
 use std::sync::Mutex;
-use rand::prelude::*;
-use crate::{HasBytesSize, Msg, SimId};
+use std::time::{Duration, SystemTime};
 
 struct MessageDropPolicy {
-   //count dropped messages
-   dropped_count: Mutex<u64>,
-   probability_of_drop: f64,
+    //count dropped messages
+    dropped_count: Mutex<u64>,
+    probability_of_drop: f64,
 }
 
 impl MessageDropPolicy {
-
     pub fn new(probability_of_drop: f64) -> Self {
         Self {
             dropped_count: Mutex::new(0),
-            probability_of_drop
+            probability_of_drop,
         }
     }
     fn randomly_drop(&self, probability: f64) -> bool {
@@ -29,8 +27,7 @@ impl MessageDropPolicy {
         self.randomly_drop(self.probability_of_drop)
     }
 
-    fn drop_message<T>(&self, msg: T, from: SimId, to: SimId) -> bool {
-
+    fn drop_message<T>(&self, _msg: T, _from: SimId, _to: SimId) -> bool {
         if self.should_drop() {
             let mut dropped_count = self.dropped_count.lock().unwrap();
             *dropped_count += 1;
@@ -38,7 +35,6 @@ impl MessageDropPolicy {
         } else {
             false
         }
-
     }
 }
 pub(crate) struct MsgPolicy {
@@ -47,15 +43,12 @@ pub(crate) struct MsgPolicy {
 }
 
 impl MsgPolicy {
-
     fn recv<T: HasBytesSize>(&self, msg: &Msg<T>, from: SimId, to: SimId) -> Outcome {
         if self.message_drops.drop_message(msg, from, to) {
             Outcome::Drop
         } else {
             match self.compute_message_speed(from, to) {
-                None => {
-                    Outcome::PassThrough
-                }
+                None => Outcome::PassThrough,
                 Some(speed) => {
                     let content_size = msg.content().bytes_size();
                     let delay = Duration::from_secs(content_size / speed);
@@ -66,15 +59,13 @@ impl MsgPolicy {
         }
     }
 
-
     fn compute_message_speed(&self, from: SimId, to: SimId) -> Option<u64> {
         self.link_speeds.get(&(from, to)).cloned()
     }
 }
 
-
 pub enum Outcome {
-    Drop,  // drop the message altogether
+    Drop,        // drop the message altogether
     PassThrough, // no drop, pass directly
     // the message will be sent to recipient, but not until the time has elapsed
     Throttle { until: SystemTime },

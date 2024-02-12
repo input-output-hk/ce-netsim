@@ -1,10 +1,10 @@
 pub mod defaults;
 mod msg;
+mod msg_policy;
 mod name_service;
 pub mod sim_context;
 mod sim_id;
 mod time_queue;
-mod msg_policy;
 
 pub use self::{
     msg::{HasBytesSize, Msg, MsgWith},
@@ -14,7 +14,6 @@ pub use self::{
 };
 
 pub struct SimConfiguration {}
-
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SimSocketConfiguration {

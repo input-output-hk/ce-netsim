@@ -7,7 +7,6 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-
 /// the collections of up links to other sockets
 ///
 /// This is parameterised so that we can set async or non async channel
@@ -27,7 +26,6 @@ pub struct SimContextCore<UpLink> {
     next_sim_id: SimId,
 
     links: Links<UpLink>,
-
 }
 
 pub struct SimMuxCore<UpLink: Link> {
@@ -36,12 +34,10 @@ pub struct SimMuxCore<UpLink: Link> {
     links: Links<UpLink>,
 
     msgs: TimeQueue<UpLink::Msg>,
-
 }
 
 pub fn new_context<UpLink: Link>(
     configuration: SimConfiguration,
-
 ) -> (SimContextCore<UpLink>, SimMuxCore<UpLink>) {
     let context = SimContextCore::new(configuration);
     let mux = SimMuxCore::new(
@@ -64,7 +60,6 @@ impl<UpLink> SimContextCore<UpLink> {
             configuration,
             next_sim_id,
             links,
-
         }
     }
 
@@ -163,7 +158,6 @@ where
         self.msgs.push(due_by, msg);
 
         Ok(())
-
     }
 
     /// function to returns all the outbound messages
