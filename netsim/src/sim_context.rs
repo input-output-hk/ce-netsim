@@ -1,11 +1,11 @@
 use crate::{
     sim_link::{link, SimUpLink},
-    SimConfiguration, SimSocket, SimSocketConfiguration,
+    SimConfiguration, SimSocket,
 };
 use anyhow::{anyhow, bail, Context as _, Result};
 use ce_netsim_core::{
     sim_context::{new_context, SimContextCore, SimMuxCore},
-    HasBytesSize, Msg,
+    Edge, EdgePolicy, HasBytesSize, Msg, NodePolicy, SimId,
 };
 use std::{
     sync::{
@@ -79,9 +79,17 @@ where
         }
     }
 
+    pub fn set_edge_policy(&mut self, edge: Edge, policy: EdgePolicy) {
+        self.core.set_edge_policy(edge, policy)
+    }
+
+    pub fn set_node_policy(&mut self, node: SimId, policy: NodePolicy) {
+        self.core.set_node_policy(node, policy)
+    }
+
     /// Open a new [`SimSocket`] with the given configuration
-    pub fn open(&mut self, configuration: SimSocketConfiguration) -> Result<SimSocket<T>> {
-        let (up, down) = link(configuration.download_bytes_per_sec);
+    pub fn open(&mut self) -> Result<SimSocket<T>> {
+        let (up, down) = link();
 
         let address = self
             .core

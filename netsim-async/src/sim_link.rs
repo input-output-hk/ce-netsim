@@ -3,13 +3,10 @@ use anyhow::{anyhow, Result};
 use ce_netsim_core::sim_context::Link;
 use tokio::sync::mpsc;
 
-pub fn link<T>(bytes_per_sec: u64) -> (SimUpLink<T>, SimDownLink<T>) {
+pub fn link<T>() -> (SimUpLink<T>, SimDownLink<T>) {
     let (sender, receiver) = mpsc::unbounded_channel();
 
-    let up = SimUpLink {
-        sender,
-        bytes_per_sec,
-    };
+    let up = SimUpLink { sender };
     let down = SimDownLink { receiver };
 
     (up, down)
@@ -20,20 +17,10 @@ where
     T: HasBytesSize,
 {
     type Msg = T;
-
-    fn download_speed(&self) -> u64 {
-        self.bytes_per_sec
-    }
-
-    fn upload_speed(&self) -> u64 {
-        // TODO
-        u64::MAX
-    }
 }
 
 pub struct SimUpLink<T> {
     sender: mpsc::UnboundedSender<Msg<T>>,
-    bytes_per_sec: u64,
 }
 
 pub struct SimDownLink<T> {
@@ -74,7 +61,6 @@ impl<T> Clone for SimUpLink<T> {
     fn clone(&self) -> Self {
         Self {
             sender: self.sender.clone(),
-            bytes_per_sec: self.bytes_per_sec,
         }
     }
 }
