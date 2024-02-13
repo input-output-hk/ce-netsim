@@ -96,41 +96,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ce-netsim"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "ce-netsim-core",
-]
-
-[[package]]
-name = "ce-netsim-async"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "ce-netsim-core",
- "tokio",
-]
-
-[[package]]
-name = "ce-netsim-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "rand",
-]
-
-[[package]]
-name = "ce-netsim-ffi"
-version = "0.1.0"
-dependencies = [
- "cbindgen",
- "ce-netsim",
- "ffi-support",
- "lazy_static",
-]
-
-[[package]]
 name = "cfg-if"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -283,6 +248,41 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e7810e0be55b428ada41041c41f32c9f1a42817901b4ccf45fa3d4b6561e74c7"
 dependencies = [
  "adler",
+]
+
+[[package]]
+name = "netsim"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "netsim-core",
+]
+
+[[package]]
+name = "netsim-async"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "netsim-core",
+ "tokio",
+]
+
+[[package]]
+name = "netsim-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "rand",
+]
+
+[[package]]
+name = "netsim-ffi"
+version = "0.1.0"
+dependencies = [
+ "cbindgen",
+ "ffi-support",
+ "lazy_static",
+ "netsim",
 ]
 
 [[package]]

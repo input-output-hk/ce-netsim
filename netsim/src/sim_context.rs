@@ -3,7 +3,7 @@ use crate::{
     SimConfiguration, SimSocket,
 };
 use anyhow::{anyhow, bail, Context as _, Result};
-use ce_netsim_core::{
+use netsim_core::{
     sim_context::{new_context, SimContextCore, SimMuxCore},
     Edge, EdgePolicy, HasBytesSize, Msg, NodePolicy, SimId,
 };

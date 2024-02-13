@@ -1,5 +1,5 @@
 [package]
-name = "ce-netsim-async"
+name = "netsim-async"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
@@ -8,7 +8,7 @@ license = "Apache-2.0"
 
 [dependencies]
 anyhow = "1.0.79"
-ce-netsim-core = { path = "../netsim-core", version = "0.1" }
+netsim-core = { path = "../netsim-core", version = "0.1" }
 # in order to continue the WASM support it is important to stick
 # to the list of supported features listed https://docs.rs/tokio/latest/tokio/#wasm-support
 tokio = { version = "1.35.1", features = ["sync", "time", "rt", "macros"] }

@@ -1,5 +1,5 @@
-use ce_netsim::{SimConfiguration, SimContext};
-use ce_netsim_core::{Edge, EdgePolicy, Latency};
+use netsim::{SimConfiguration, SimContext};
+use netsim_core::{Edge, EdgePolicy, Latency};
 use std::time::{Duration, Instant};
 
 const MSG: &str = "Hello World!";
