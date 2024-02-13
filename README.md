@@ -3,7 +3,14 @@
 [![Lints](https://github.com/input-output-hk/ce-netsim/actions/workflows/lints.yml/badge.svg)](https://github.com/input-output-hk/ce-netsim/actions/workflows/lints.yml)
 [![Tests](https://github.com/input-output-hk/ce-netsim/actions/workflows/tests.yml/badge.svg)](https://github.com/input-output-hk/ce-netsim/actions/workflows/tests.yml)
 
-Two versions are offered here, an async version and a non async version.
+Network simulator is a small rust framework to simulate network without going
+outside of the process. It doesn't simulate low level network, but allow to
+simulate a topology with bandwidth and delay between nodes.
+
+The goal is to be language agnostic. This can be used in rust directly,
+but we also export the framework as a C interface. We are also interested
+in a WASM export. Two versions of the framework are offered here, an async
+version and a sync version.
 
 ## Doc
 
