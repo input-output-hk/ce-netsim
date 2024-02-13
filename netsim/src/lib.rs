@@ -5,8 +5,8 @@ use std::sync::mpsc;
 
 pub use crate::sim_context::SimContext;
 use anyhow::Result;
-use ce_netsim_core::Msg;
-pub use ce_netsim_core::{
+use netsim_core::Msg;
+pub use netsim_core::{
     Bandwidth, Edge, EdgePolicy, HasBytesSize, Latency, NodePolicy, PacketLoss, SimConfiguration,
     SimId,
 };

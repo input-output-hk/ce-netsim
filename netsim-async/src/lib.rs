@@ -9,8 +9,8 @@ pub(crate) use self::{
     sim_link::{link, SimDownLink, SimUpLink},
 };
 use anyhow::Result;
-pub(crate) use ce_netsim_core::Msg;
-pub use ce_netsim_core::{
+pub(crate) use netsim_core::Msg;
+pub use netsim_core::{
     Bandwidth, Edge, EdgePolicy, HasBytesSize, Latency, NodePolicy, PacketLoss, SimConfiguration,
     SimId,
 };

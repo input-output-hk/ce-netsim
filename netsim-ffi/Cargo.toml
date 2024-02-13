@@ -1,5 +1,5 @@
 [package]
-name = "ce-netsim-ffi"
+name = "netsim-ffi"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
@@ -7,7 +7,7 @@ license = "Apache-2.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ce-netsim = { path = "../netsim", version = "0.1" }
+netsim = { path = "../netsim", version = "0.1" }
 ffi-support = "0.4.4"
 lazy_static = "1.4"
 

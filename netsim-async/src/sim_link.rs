@@ -1,6 +1,6 @@
 use crate::{HasBytesSize, Msg};
 use anyhow::{anyhow, Result};
-use ce_netsim_core::sim_context::Link;
+use netsim_core::sim_context::Link;
 use tokio::sync::mpsc;
 
 pub fn link<T>() -> (SimUpLink<T>, SimDownLink<T>) {
