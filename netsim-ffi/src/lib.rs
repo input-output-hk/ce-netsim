@@ -1,7 +1,12 @@
-use ffi_support::ByteBuffer;
+use ffi_support::{ByteBuffer, ExternError};
 use lazy_static::lazy_static;
 use std::collections::VecDeque;
+use std::slice;
+use std::ffi::CString;
+use std::io::Read;
 use std::sync::{Arc, Mutex};
+use ce_netsim::{SimConfiguration, SimContext, SimId, SimSocket, SimSocketConfiguration};
+
 type Address = u64;
 
 /**
@@ -41,12 +46,44 @@ lazy_static! {
 }
 
 #[no_mangle]
-pub extern "C" fn send_ffi(addr: Address, data: &ByteBuffer) -> bool {
-    FFI_IMPL.send(addr, data.as_slice())
+pub extern "C" fn netsim_send(err: &mut ExternError,
+                              sim_id: SimId,
+                              sim_socket: &'static SimSocket<&str>,
+                              data: &ByteBuffer) -> bool {
+    unsafe {
+        // Convert the raw pointer to a slice of bytes
+        let byte_slice = slice::from_raw_parts(data, data.len() as usize);
+
+        // Attempt to convert the byte slice to a string slice
+        std::str::from_utf8(byte_slice).ok()
+    }
+    let s: &str = "";
+    //let s = std::str::from_utf8(&data.destroy_into_vec()).unwrap();
+    sim_socket.send_to(sim_id, s).unwrap();
+    true
 }
 
 #[no_mangle]
-pub extern "C" fn receive_ffi(data: &mut ByteBuffer, addr: &mut Address) -> bool {
+pub unsafe extern "C" fn netsim_new_context(err: &mut ExternError, context_ptr: &'static mut SimContext<&str>) -> bool {
+    let configuration = SimConfiguration {};
+    let mut context: SimContext<&'static str> = SimContext::new(configuration);
+    *context_ptr = context;
+    true
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn netsim_open_context(err: &mut ExternError,
+                                             context: &'static mut SimContext<&str>,
+                                             sim_socket: &'static mut SimSocket<&str>) -> bool {
+    let cfg = SimSocketConfiguration::default();
+    let r = context.open(cfg);
+    let net = r.unwrap();
+    *sim_socket = net;
+    true
+}
+
+#[no_mangle]
+pub extern "C" fn netsim_receive(data: &mut ByteBuffer, addr: &mut Address) -> bool {
     let Some((address, data_tmp)) = FFI_IMPL.recv() else {
         return false;
     };

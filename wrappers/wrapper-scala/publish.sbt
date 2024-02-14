@@ -47,7 +47,7 @@ ThisBuild / credentials += sys.env.get("NEXUS_USER").map(userName => Credentials
   Credentials(Path.userHome / ".ivy2" / ".credentials")
 )
 
-val fallbackVerison = "0.0.1"
+val fallbackVerison = "0.0.2"
 
 ThisBuild / version := sys.env.getOrElse("GITHUB_REF_NAME", fallbackVerison).replaceAll("/", "_")
 
