@@ -175,7 +175,6 @@ pub unsafe extern "C" fn netsim_socket_recv(
     let Some((id, data)) = socket.recv() else {
         // this is usually to signal it is time to release
         // the socket
-        let _ = Box::from_raw(socket);
         return SimError::NoMoreData;
     };
 
