@@ -5,7 +5,6 @@ pub type SimContext = netsim::SimContext<Box<[u8]>>;
 
 pub type SimSocket = netsim::SimSocket<Box<[u8]>>;
 
-use std::cmp;
 
 #[repr(u32)]
 pub enum SimError {
@@ -20,7 +19,9 @@ pub enum SimError {
 
     /// The function is not yet implemented, please report this issue
     /// to maintainers
-    NotImplemented,
+    NotImplemented = 4,
+
+    NoMoreData = 5
 }
 
 /// Create a new NetSim Context
@@ -87,10 +88,12 @@ pub unsafe extern "C" fn netsim_context_open(
     if context.is_null() || output.is_null() {
         SimError::NullPointerArgument
     } else {
-        let mut context = Box::from_raw(context);
-        match context.open() {
+        let Some(context_mut) = context.as_mut() else {
+            return SimError::NullPointerArgument;
+        };
+        match context_mut.open() {
             Ok(sim_socket) => {
-                **output = sim_socket;
+                *output = Box::into_raw(Box::new(sim_socket));
                 return SimError::Success
             },
             Err(error) => {
@@ -150,7 +153,13 @@ pub unsafe extern "C" fn netsim_socket_release(socket: *mut SimSocket) -> SimErr
 /// The function checks for the context to be a nullpointer before trying
 /// to utilise it. However if the value points to a random value then
 /// the function may have unexpected behaviour.
-///
+/// This function will block until a message is received.
+/// The function expects size to contain the size of the buffer provided.
+/// The data received from the "socket" will be copied into the buffer up to the size but not beyond
+/// This implies the buffer will not contain the whole message if the message length
+/// is greater than the size of the provided buffer.
+/// Finally the size is updated to reflect the length o the data copied into the buffer.
+/// If no data is available from the socket, a NoMoreData error is returned.
 #[no_mangle]
 pub unsafe extern "C" fn netsim_socket_recv(
     socket: *mut SimSocket,
@@ -170,7 +179,7 @@ pub unsafe extern "C" fn netsim_socket_recv(
         // this is usually to signal it is time to release
         // the socket
         let _ = Box::from_raw(socket);
-        return SimError::Undefined
+        return SimError::NoMoreData
     };
 
     *from = id;
@@ -193,6 +202,7 @@ pub unsafe extern "C" fn netsim_socket_recv(
 /// The function checks for the context to be a nullpointer before trying
 /// to utilise it. However if the value points to a random value then
 /// the function may have unexpected behaviour.
+/// This function returns immediately.
 ///
 #[no_mangle]
 pub unsafe extern "C" fn netsim_socket_send_to(

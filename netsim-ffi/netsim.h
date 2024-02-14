@@ -6,8 +6,8 @@
  * Licensed with: Apache-2.0
  */
 
-#ifndef NETSIM_LIBC_
-#define NETSIM_LIBC_
+#ifndef NETSIM_LIBC
+#define NETSIM_LIBC
 
 /* Generated with cbindgen:0.26.0 */
 
@@ -36,7 +36,8 @@ enum SimError
    * The function is not yet implemented, please report this issue
    * to maintainers
    */
-  SimError_NotImplemented,
+  SimError_NotImplemented = 4,
+  SimError_NoMoreData = 5,
 };
 typedef uint32_t SimError;
 
@@ -103,7 +104,13 @@ SimError netsim_socket_id(struct SimSocket *socket, SimId *id);
  * The function checks for the context to be a nullpointer before trying
  * to utilise it. However if the value points to a random value then
  * the function may have unexpected behaviour.
- *
+ * This function will block until a message is received.
+ * The function expects size to contain the size of the buffer provided.
+ * The data received from the "socket" will be copied into the buffer up to the size but not beyond
+ * This implies the buffer will not contain the whole message if the message length
+ * is greater than the size of the provided buffer.
+ * Finally the size is updated to reflect the length o the data copied into the buffer.
+ * If no data is available from the socket, a NoMoreData error is returned.
  */
 SimError netsim_socket_recv(struct SimSocket *socket,
                             uint8_t *msg,
@@ -130,6 +137,7 @@ SimError netsim_socket_release(struct SimSocket *socket);
  * The function checks for the context to be a nullpointer before trying
  * to utilise it. However if the value points to a random value then
  * the function may have unexpected behaviour.
+ * This function returns immediately.
  *
  */
 SimError netsim_socket_send_to(struct SimSocket *socket,
@@ -137,4 +145,4 @@ SimError netsim_socket_send_to(struct SimSocket *socket,
                                uint8_t *msg,
                                uint64_t size);
 
-#endif /* NETSIM_LIBC_ */
+#endif /* NETSIM_LIBC */
