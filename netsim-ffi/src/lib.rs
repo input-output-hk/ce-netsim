@@ -5,6 +5,8 @@ pub type SimContext = netsim::SimContext<Box<[u8]>>;
 
 pub type SimSocket = netsim::SimSocket<Box<[u8]>>;
 
+use std::cmp;
+
 #[repr(u32)]
 pub enum SimError {
     /// the function succeed, no error
@@ -169,17 +171,21 @@ pub unsafe extern "C" fn netsim_socket_recv(
     let Some((id, data)) = socket.recv() else {
         // this is usually to signal it is time to release
         // the socket
-        todo!()
+        let _ = Box::from_raw(socket);
+        return SimError::Undefined
     };
 
     *from = id;
 
-    // TODO: this is not complete, we need to take the minimum value between
+    // we need to take the minimum value between
     // what the caller had allocated
-    output.copy_from_slice(&data[..]);
-    *size = output.len() as u64;
 
-    SimError::Undefined
+    let copy_length = output.len().min(data.len()); // Determine the max length to copy
+    output[..copy_length].copy_from_slice(&data[..copy_length]);
+
+    *size = copy_length as u64;
+
+    SimError::Success
 }
 
 /// Send a message to the [`SimSocket`]
