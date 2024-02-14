@@ -64,9 +64,7 @@ pub unsafe extern "C" fn netsim_context_shutdown(context: *mut SimContext) -> Si
             Ok(()) => SimError::Success,
             Err(error) => {
                 // better handle the error, maybe print it to the standard err output
-
                 eprintln!("{error:?}");
-
                 SimError::Undefined
             }
         }
@@ -214,8 +212,8 @@ pub unsafe extern "C" fn netsim_socket_send_to(
         .into_boxed_slice();
 
     if let Err(error) = socket.send_to(to, msg) {
-        // TODO
-        todo!()
+        eprintln!("{error:?}");
+        return SimError::Undefined
     }
 
     SimError::Success
