@@ -8,8 +8,6 @@ license = "Apache-2.0"
 
 [dependencies]
 netsim = { path = "../netsim", version = "0.1" }
-ffi-support = "0.4.4"
-lazy_static = "1.4"
 
 [build-dependencies]
 cbindgen = "0.26.0"
