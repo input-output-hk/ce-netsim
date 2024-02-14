@@ -92,12 +92,12 @@ pub unsafe extern "C" fn netsim_context_open(
         match context_mut.open() {
             Ok(sim_socket) => {
                 *output = Box::into_raw(Box::new(sim_socket));
-                return SimError::Success;
+                SimError::Success
             }
             Err(error) => {
                 // better handle the error, maybe print it to the standard err output
                 eprintln!("{error:?}");
-                return SimError::Undefined;
+                SimError::Undefined
             }
         }
     }
