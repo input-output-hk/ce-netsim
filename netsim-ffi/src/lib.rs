@@ -1,10 +1,8 @@
-
 pub use netsim::SimId;
 
 pub type SimContext = netsim::SimContext<Box<[u8]>>;
 
 pub type SimSocket = netsim::SimSocket<Box<[u8]>>;
-
 
 #[repr(u32)]
 pub enum SimError {
@@ -21,7 +19,7 @@ pub enum SimError {
     /// to maintainers
     NotImplemented = 4,
 
-    NoMoreData = 5
+    NoMoreData = 5,
 }
 
 /// Create a new NetSim Context
@@ -94,15 +92,14 @@ pub unsafe extern "C" fn netsim_context_open(
         match context_mut.open() {
             Ok(sim_socket) => {
                 *output = Box::into_raw(Box::new(sim_socket));
-                return SimError::Success
-            },
+                return SimError::Success;
+            }
             Err(error) => {
                 // better handle the error, maybe print it to the standard err output
                 eprintln!("{error:?}");
-                return SimError::Undefined
+                return SimError::Undefined;
             }
         }
-
     }
 }
 
@@ -179,7 +176,7 @@ pub unsafe extern "C" fn netsim_socket_recv(
         // this is usually to signal it is time to release
         // the socket
         let _ = Box::from_raw(socket);
-        return SimError::NoMoreData
+        return SimError::NoMoreData;
     };
 
     *from = id;
@@ -223,7 +220,7 @@ pub unsafe extern "C" fn netsim_socket_send_to(
 
     if let Err(error) = socket.send_to(to, msg) {
         eprintln!("{error:?}");
-        return SimError::Undefined
+        return SimError::Undefined;
     }
 
     SimError::Success
