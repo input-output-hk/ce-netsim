@@ -1,3 +1,4 @@
+
 pub use netsim::SimId;
 
 pub type SimContext = netsim::SimContext<Box<[u8]>>;
@@ -86,8 +87,20 @@ pub unsafe extern "C" fn netsim_context_open(
     if context.is_null() || output.is_null() {
         SimError::NullPointerArgument
     } else {
-        // TODO
+        let mut context = Box::from_raw(context);
+        match context.open() {
+            Ok(sim_socket) => {
+                **output = sim_socket;
+                return SimError::Success
+            },
+            Err(error) => {
+                // better handle the error, maybe print it to the standard err output
 
+                eprintln!("{error:?}");
+
+                return SimError::Undefined
+            }
+        }
         SimError::NotImplemented
     }
 }

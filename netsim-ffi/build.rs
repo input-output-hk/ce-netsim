@@ -1,16 +1,19 @@
 extern crate cbindgen;
 
 use std::env;
+use std::path::PathBuf;
+use cbindgen::Config;
+
 
 fn main() {
     let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
-    let mut config: cbindgen::Config = Default::default();
-    config.language = cbindgen::Language::C;
+    let config_path = PathBuf::from(&crate_dir).join("cbindgen.toml");
+    let config = Config::from_file(&config_path).expect("Failed to parse cbindgen.toml");
 
     cbindgen::Builder::new()
         .with_crate(crate_dir)
         .with_config(config)
         .generate()
         .expect("Unable to generate bindings")
-        .write_to_file("bindings.h");
+        .write_to_file("netsim.h");
 }
