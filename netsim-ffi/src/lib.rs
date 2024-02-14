@@ -95,13 +95,11 @@ pub unsafe extern "C" fn netsim_context_open(
             },
             Err(error) => {
                 // better handle the error, maybe print it to the standard err output
-
                 eprintln!("{error:?}");
-
                 return SimError::Undefined
             }
         }
-        SimError::NotImplemented
+
     }
 }
 
@@ -124,7 +122,7 @@ pub unsafe extern "C" fn netsim_socket_id(socket: *mut SimSocket, id: *mut SimId
 
     *id = socket.id();
 
-    SimError::Undefined
+    SimError::Success
 }
 
 /// Release the new [`SimSocket`] resources
