@@ -1,6 +1,4 @@
-// TODO: move the SimId to the header: netsim.h
 #include <stdint.h>
-typedef uint64_t SimId;
 
 #include "netsim.h"
 

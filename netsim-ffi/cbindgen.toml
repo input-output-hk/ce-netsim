@@ -29,10 +29,12 @@ documentation_style = "doxy"
 ############################# Codegen Options ##################################
 
 style = "both"
+includes = ["netsim_extra.h"]
 
 [export]
 item_types = []
 renaming_overrides_prefixing = false
+
 
 [fn]
 rename_args = "None"
@@ -60,6 +62,7 @@ allow_constexpr = false
 
 [macro_expansion]
 bitflags = false
+
 
 ############## Options for How Your Rust library Should Be Parsed ##############
 
