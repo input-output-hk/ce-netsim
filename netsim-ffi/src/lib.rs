@@ -19,7 +19,7 @@ pub enum SimError {
     /// to maintainers
     NotImplemented = 4,
 
-    NoMoreData = 5,
+    SocketDisconnected = 5,
 }
 
 /// Create a new NetSim Context
@@ -175,7 +175,7 @@ pub unsafe extern "C" fn netsim_socket_recv(
     let Some((id, data)) = socket.recv() else {
         // this is usually to signal it is time to release
         // the socket
-        return SimError::NoMoreData;
+        return SimError::SocketDisconnected;
     };
 
     *from = id;
