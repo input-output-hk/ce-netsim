@@ -1,5 +1,5 @@
 CC      = gcc
-CFLAGS  = -o1 -I.. ${PWD}/../../target/debug/libnetsim.a
+CFLAGS  = -o1 -I.. -L ${PWD}/../../target/debug/ -lnetsim
 RM      = rm
 
 default: all
