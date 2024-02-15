@@ -37,7 +37,7 @@ enum SimError
    * to maintainers
    */
   SimError_NotImplemented = 4,
-  SimError_NoMoreData = 5,
+  SimError_SocketDisconnected = 5,
 };
 typedef uint32_t SimError;
 
