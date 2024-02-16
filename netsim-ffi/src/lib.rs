@@ -156,9 +156,10 @@ pub unsafe extern "C" fn netsim_socket_release(socket: *mut SimSocket) -> SimErr
 /// the function may have unexpected behaviour.
 /// This function will block until a message is received.
 /// The function expects size to contain the size of the buffer provided.
-/// If the data from the sockets is too big for the buffer provided
-/// a BufferTooSmall error is returned
-/// Finally the size is updated to reflect the length o the data copied into the buffer.
+/// If the data from the socket is too big for the buffer provided,
+/// size is updated to the larger required buffer size and a BufferTooSmall
+/// error is returned.
+/// Otherwise the size is updated to reflect the length of the data copied into the buffer.
 /// If no data is available from the socket, a SocketDisconnected error is returned.
 #[no_mangle]
 pub unsafe extern "C" fn netsim_socket_recv(
