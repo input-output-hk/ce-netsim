@@ -12,7 +12,7 @@ $(NETSIMLIB):
 	cargo build --package netsim-ffi
 
 netsim: main.o
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $+
+	$(CC) $(CFLAGS) -o $@ $+ $(LDFLAGS)
 
 clean:
 	$(RM) -f *.o netsim
