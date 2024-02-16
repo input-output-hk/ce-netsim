@@ -38,7 +38,14 @@ enum SimError
    * to maintainers
    */
   SimError_NotImplemented = 4,
+  /**
+   * This indicates it's time to release the socket
+   */
   SimError_SocketDisconnected = 5,
+  /**
+   * The callers buffer could not hold the full message
+   */
+  SimError_BufferTooSmall = 6,
 };
 typedef uint32_t SimError;
 
@@ -86,7 +93,7 @@ SimError netsim_context_open(struct SimContext *context,
 SimError netsim_context_shutdown(struct SimContext *context);
 
 /**
- * Access the unique dentifier of the [`SimSocket`]
+ * Access the unique identifier of the [`SimSocket`]
  *
  * # Safety
  *
@@ -107,11 +114,10 @@ SimError netsim_socket_id(struct SimSocket *socket, SimId *id);
  * the function may have unexpected behaviour.
  * This function will block until a message is received.
  * The function expects size to contain the size of the buffer provided.
- * The data received from the "socket" will be copied into the buffer up to the size but not beyond
- * This implies the buffer will not contain the whole message if the message length
- * is greater than the size of the provided buffer.
+ * If the data from the sockets is too big for the buffer provided
+ * a BufferTooSmall error is returned
  * Finally the size is updated to reflect the length o the data copied into the buffer.
- * If no data is available from the socket, a NoMoreData error is returned.
+ * If no data is available from the socket, a SocketDisconnected error is returned.
  */
 SimError netsim_socket_recv(struct SimSocket *socket,
                             uint8_t *msg,

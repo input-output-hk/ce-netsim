@@ -19,7 +19,11 @@ pub enum SimError {
     /// to maintainers
     NotImplemented = 4,
 
+    /// This indicates it's time to release the socket
     SocketDisconnected = 5,
+
+    /// The callers buffer could not hold the full message
+    BufferTooSmall = 6,
 }
 
 /// Create a new NetSim Context
@@ -103,7 +107,7 @@ pub unsafe extern "C" fn netsim_context_open(
     }
 }
 
-/// Access the unique dentifier of the [`SimSocket`]
+/// Access the unique identifier of the [`SimSocket`]
 ///
 /// # Safety
 ///
@@ -152,11 +156,10 @@ pub unsafe extern "C" fn netsim_socket_release(socket: *mut SimSocket) -> SimErr
 /// the function may have unexpected behaviour.
 /// This function will block until a message is received.
 /// The function expects size to contain the size of the buffer provided.
-/// The data received from the "socket" will be copied into the buffer up to the size but not beyond
-/// This implies the buffer will not contain the whole message if the message length
-/// is greater than the size of the provided buffer.
+/// If the data from the sockets is too big for the buffer provided
+/// a BufferTooSmall error is returned
 /// Finally the size is updated to reflect the length o the data copied into the buffer.
-/// If no data is available from the socket, a NoMoreData error is returned.
+/// If no data is available from the socket, a SocketDisconnected error is returned.
 #[no_mangle]
 pub unsafe extern "C" fn netsim_socket_recv(
     socket: *mut SimSocket,
@@ -180,13 +183,12 @@ pub unsafe extern "C" fn netsim_socket_recv(
 
     *from = id;
 
-    // we need to take the minimum value between
-    // what the caller had allocated
+    if data.len() > output.len() {
+        return SimError::BufferTooSmall;
+    }
 
-    let copy_length = output.len().min(data.len()); // Determine the max length to copy
-    output[..copy_length].copy_from_slice(&data[..copy_length]);
-
-    *size = copy_length as u64;
+    output.copy_from_slice(&data[..]);
+    *size = output.len() as u64;
 
     SimError::Success
 }
