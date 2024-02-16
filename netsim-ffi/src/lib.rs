@@ -182,6 +182,7 @@ pub unsafe extern "C" fn netsim_socket_recv(
     };
 
     *from = id;
+    *size = data.len() as u64;
 
     if data.len() > output.len() {
         return SimError::BufferTooSmall;
@@ -190,8 +191,6 @@ pub unsafe extern "C" fn netsim_socket_recv(
     let output_slice = &mut output[..data.len()];
     // Copy data from `data` to `output_slice`
     output_slice.copy_from_slice(&data);
-
-    *size = output_slice.len() as u64;
 
     SimError::Success
 }
