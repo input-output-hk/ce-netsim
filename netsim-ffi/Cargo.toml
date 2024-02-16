@@ -14,4 +14,4 @@ cbindgen = "0.26.0"
 
 [lib]
 name = "netsim"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "staticlib"]

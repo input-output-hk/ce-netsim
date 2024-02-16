@@ -1,0 +1,40 @@
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+name: Tests C Bindings
+
+jobs:
+  build:
+    name: Tests C Bindings
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Run cargo build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --package netsim-ffi
+
+      - name: Run Make
+        working-directory: netsim-ffi/c_tests
+        run: make
+
+      - name: Run netsim C tests
+        working-directory: netsim-ffi/c_tests
+        env:
+          LD_LIBRARY_PATH: ../../target/debug/:$LD_LIBRARY_PATH
+        run: ./netsim
