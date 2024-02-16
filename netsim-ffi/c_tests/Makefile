@@ -1,13 +1,21 @@
 CC      = gcc
-CFLAGS  = -o1 -I.. -L ${PWD}/../../target/debug/ -lnetsim
+CFLAGS  = -I..
+LDFLAGS = -L ${PWD}/../../target/debug/ -lnetsim
 RM      = rm
+NETSIMLIB = ${PWD}/../../target/debug/libnetsim.a
 
 default: all
 
-all: netsim
+all: $(NETSIMLIB) netsim
 
-netsim: main.c
-	$(CC) $(CFLAGS) -o netsim main.c
+$(NETSIMLIB):
+	cargo build --package netsim-ffi
+
+netsim: main.o
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $+
 
 clean:
-	$(RM) netsim
+	$(RM) -f *.o netsim
+
+%.o: %.c %.h
+	$(CC) $(CFLAGS) -c -o $@ $<
