@@ -35,4 +35,6 @@ jobs:
 
       - name: Run netsim C tests
         working-directory: netsim-ffi/c_tests
+        env:
+          LD_LIBRARY_PATH: ../../target/debug/:$LD_LIBRARY_PATH
         run: ./netsim
