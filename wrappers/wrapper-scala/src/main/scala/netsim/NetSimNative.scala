@@ -1,17 +1,13 @@
 package netsim
 
-import helper.ArrayStruct
-import jnr.ffi.annotations.{In, Out}
-import jnr.ffi.byref.NativeLongByReference
+import helper.SimError
+import jnr.ffi.byref.{NativeLongByReference, PointerByReference}
 import jnr.ffi.types._
-import jnr.ffi.{LibraryLoader, Pointer, Runtime}
+import jnr.ffi.{LibraryLoader, NativeLong, Pointer, Runtime}
 
 
 object NetSimNative {
 
-  implicit class NativeOps(val api: NetSimNative) extends AnyVal {
-    def makeInStruct(): Pointer = ArrayStruct.byteArrayStructIn(api.runtime)
-  }
 
   def apply(): NetSimNative = apply(
     Seq(ClasspathSharedObject.createTempFolderWithExtractedLibs.toString)
@@ -38,9 +34,35 @@ trait NetSimNative {
 
   implicit def runtime: Runtime = Runtime.getRuntime(NetSimNative.this)
 
-  def receive_ffi(data: Pointer, addr: NativeLongByReference@Out @u_int64_t): Boolean
+  def netsim_context_new(context: PointerByReference): SimError
+  def netsim_context_shutdown(context: Pointer): SimError
+  def netsim_context_open(
+                           context: Pointer,
+                           output: PointerByReference
+                         ): SimError
 
-  def send_ffi(addr: Long@In @u_int64_t, data: Pointer): Boolean
 
+  def netsim_socket_send_to(
+                             socket: Pointer,
+                             // where we will put the sender ID
+                             to: NativeLong,
+                             // pre-allocated byte array
+                             msg: Pointer,
+                             // the maximum size of the pre-allocated byte array
+                             size: Long@u_int64_t,
+                           ): SimError
 
+  def netsim_socket_recv(
+                          socket: Pointer,
+                          // pre-allocated byte array
+                          msg: Pointer,
+                          // the maximum size of the pre-allocated byte array
+                          size: NativeLongByReference,
+                          // where we will put the sender ID
+                          from: NativeLongByReference,
+                        ): SimError
+
+  def netsim_socket_id(socket: Pointer, simId: NativeLongByReference): SimError
+
+  def netsim_socket_release(socket: Pointer): SimError
 }
