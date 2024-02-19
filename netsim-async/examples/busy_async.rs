@@ -82,11 +82,11 @@ impl BusyBee {
         self.writer.send_to(to, msg).unwrap()
     }
 
-    async fn handle_inbound(&mut self, from: SimId, msg: Msg) {
-        let id = self.reader.id();
-        let size = msg.size;
-        let elapsed = msg.time.elapsed().as_millis();
-        // println!("{from:04} -> {id:04}: {size} bytes ({elapsed} ms)")
+    async fn handle_inbound(&mut self, _from: SimId, msg: Msg) {
+        let _id = self.reader.id();
+        let _size = msg.size;
+        let _elapsed = msg.time.elapsed().as_millis();
+        // println!("{_from:04} -> {_id:04}: {_size} bytes ({_elapsed} ms)")
     }
 
     async fn work(mut self, barrier: Arc<Barrier>) {
