@@ -23,9 +23,9 @@ buildInfoKeys ++= Seq[BuildInfoKey](
 resolvers += "jitpack" at "https://jitpack.io"
 
 libraryDependencies ++= Seq(
-  "com.github.jnr" % "jnr-ffi" % "2.2.13",
-  "com.mcsherrylabs" %% "sss-events" % "0.0.1",
-  "ch.qos.logback" % "logback-classic" % "1.4.4",
+  "com.github.jnr" % "jnr-ffi" % "2.2.16",
+  "com.mcsherrylabs" %% "sss-events" % "0.0.6" % Test,
+  "ch.qos.logback" % "logback-classic" % "1.4.4" % Test,
   "org.scalatest" %% "scalatest" % "3.2.15" % Test
 )
 
