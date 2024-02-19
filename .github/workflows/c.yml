@@ -17,17 +17,12 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Install stable toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          profile: minimal
           toolchain: stable
-          override: true
 
       - name: Run cargo build
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --package netsim-ffi
+        run: cargo build --package netsim-ffi
 
       - name: Run Make
         working-directory: netsim-ffi/c_tests

@@ -17,25 +17,13 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Install stable toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Run cargo test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
+        run: cargo test --workspace --all
 
       - name: Run Netsim Example
-        uses: actions-rs/cargo@v1
-        with:
-          command: run
-          args: --example simple
+        run: cargo run --example simple
 
       - name: Run Netsim Async Example
-        uses: actions-rs/cargo@v1
-        with:
-          command: run
-          args: --example simple_async
+        run: cargo run --example simple_async
