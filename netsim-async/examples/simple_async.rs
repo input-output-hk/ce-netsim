@@ -1,7 +1,5 @@
+use netsim_async::{Edge, EdgePolicy, Latency, SimConfiguration, SimContext};
 use std::time::Duration;
-
-use netsim_async::{SimConfiguration, SimContext};
-use netsim_core::{Edge, EdgePolicy, Latency};
 use tokio::time::Instant;
 
 const MSG: &str = "Hello World!";
