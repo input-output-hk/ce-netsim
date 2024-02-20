@@ -9,3 +9,7 @@ license = "Apache-2.0"
 [dependencies]
 anyhow = "1.0.79"
 netsim-core = { path = "../netsim-core", version = "0.1" }
+
+[dev-dependencies]
+clap = { version = "4.5.1", features = ["derive"] }
+rand = "0.8.5"
