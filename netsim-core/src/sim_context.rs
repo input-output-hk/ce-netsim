@@ -1,6 +1,6 @@
 use crate::{
-    Edge, EdgePolicy, HasBytesSize, Msg, NameService, NodePolicy, SimConfiguration, SimId,
-    TimeQueue,
+    policy::PolicyOutcome, Edge, EdgePolicy, HasBytesSize, Msg, NameService, NodePolicy, OnDrop,
+    Policy, SimConfiguration, SimId, TimeQueue,
 };
 use anyhow::{anyhow, Result};
 use std::{
@@ -18,8 +18,8 @@ pub trait Link {
     type Msg: HasBytesSize;
 }
 
-pub struct SimContextCore<UpLink> {
-    configuration: Arc<RwLock<SimConfiguration>>,
+pub struct SimContextCore<UpLink: Link> {
+    policy: Arc<RwLock<Policy>>,
 
     ns: NameService,
 
@@ -29,7 +29,9 @@ pub struct SimContextCore<UpLink> {
 }
 
 pub struct SimMuxCore<UpLink: Link> {
-    configuration: Arc<RwLock<SimConfiguration>>,
+    policy: Arc<RwLock<Policy>>,
+
+    on_drop: Option<OnDrop<UpLink::Msg>>,
 
     links: Links<UpLink>,
 
@@ -37,34 +39,38 @@ pub struct SimMuxCore<UpLink: Link> {
 }
 
 pub fn new_context<UpLink: Link>(
-    configuration: SimConfiguration,
+    configuration: SimConfiguration<UpLink::Msg>,
 ) -> (SimContextCore<UpLink>, SimMuxCore<UpLink>) {
-    let context = SimContextCore::new(configuration);
+    let context = SimContextCore::new(configuration.policy);
     let mux = SimMuxCore::new(
         Arc::clone(context.configuration()),
+        configuration.on_drop,
         Arc::clone(context.links()),
     );
 
     (context, mux)
 }
 
-impl<UpLink> SimContextCore<UpLink> {
-    fn new(configuration: SimConfiguration) -> Self {
-        let configuration = Arc::new(RwLock::new(configuration));
+impl<UpLink> SimContextCore<UpLink>
+where
+    UpLink: Link,
+{
+    fn new(policy: Policy) -> Self {
+        let policy = Arc::new(RwLock::new(policy));
         let links = Arc::new(Mutex::new(HashMap::new()));
         let next_sim_id = SimId::ZERO.next(); // Starts at 1
         let ns = NameService::new();
 
         Self {
             ns,
-            configuration,
+            policy,
             next_sim_id,
             links,
         }
     }
 
-    pub fn configuration(&self) -> &Arc<RwLock<SimConfiguration>> {
-        &self.configuration
+    pub fn configuration(&self) -> &Arc<RwLock<Policy>> {
+        &self.policy
     }
 
     pub fn links(&self) -> &Links<UpLink> {
@@ -76,19 +82,11 @@ impl<UpLink> SimContextCore<UpLink> {
     }
 
     pub fn set_edge_policy(&mut self, edge: Edge, policy: EdgePolicy) {
-        self.configuration
-            .write()
-            .unwrap()
-            .policy
-            .set_edge_policy(edge, policy)
+        self.policy.write().unwrap().set_edge_policy(edge, policy)
     }
 
     pub fn set_node_policy(&mut self, node: SimId, policy: NodePolicy) {
-        self.configuration
-            .write()
-            .unwrap()
-            .policy
-            .set_node_policy(node, policy)
+        self.policy.write().unwrap().set_node_policy(node, policy)
     }
 
     pub fn new_link(&mut self, link: UpLink) -> Result<SimId> {
@@ -114,17 +112,22 @@ impl<UpLink> SimMuxCore<UpLink>
 where
     UpLink: Link,
 {
-    fn new(configuration: Arc<RwLock<SimConfiguration>>, links: Links<UpLink>) -> Self {
+    fn new(
+        policy: Arc<RwLock<Policy>>,
+        on_drop: Option<OnDrop<UpLink::Msg>>,
+        links: Links<UpLink>,
+    ) -> Self {
         let msgs = TimeQueue::new();
         Self {
-            configuration,
+            policy,
+            on_drop,
             links,
             msgs,
         }
     }
 
-    pub fn configuration(&self) -> &Arc<RwLock<SimConfiguration>> {
-        &self.configuration
+    pub fn configuration(&self) -> &Arc<RwLock<Policy>> {
+        &self.policy
     }
 
     pub fn links(&self) -> &Links<UpLink> {
@@ -136,14 +139,16 @@ where
     /// The message propagation speed will be computed based on
     /// the upload, download and general link speed between
     pub fn inbound_message(&mut self, msg: Msg<UpLink::Msg>) -> Result<()> {
-        let due_by = self
-            .configuration
-            .read()
-            .unwrap()
-            .policy
-            .message_due_time(&msg);
+        let mut configuration = self.policy.write().expect("Never poisonned");
 
-        self.msgs.push(due_by, msg);
+        match configuration.process(&msg) {
+            PolicyOutcome::Drop => {
+                if let Some(on_drop) = self.on_drop.as_ref() {
+                    on_drop.handle(msg.into_content())
+                }
+            }
+            PolicyOutcome::Delay { until } => self.msgs.push(until, msg),
+        }
 
         Ok(())
     }

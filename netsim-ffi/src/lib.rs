@@ -1,8 +1,28 @@
+use std::{
+    ffi::c_void,
+    ops::{Deref, DerefMut},
+};
+
 pub use netsim::SimId;
+use netsim::{HasBytesSize, SimContext as OSimContext, SimSocket as OSimSocket};
 
-pub type SimContext = netsim::SimContext<Box<[u8]>>;
+#[repr(C)]
+pub struct Message {
+    pub pointer: *mut c_void,
+    pub size: u64,
+}
 
-pub type SimSocket = netsim::SimSocket<Box<[u8]>>;
+unsafe impl Send for Message {}
+unsafe impl Sync for Message {}
+
+impl HasBytesSize for Message {
+    fn bytes_size(&self) -> u64 {
+        self.size
+    }
+}
+
+pub struct SimContext(OSimContext<Message>);
+pub struct SimSocket(OSimSocket<Message>);
 
 #[repr(u32)]
 pub enum SimError {
@@ -21,9 +41,6 @@ pub enum SimError {
 
     /// This indicates it's time to release the socket
     SocketDisconnected = 5,
-
-    /// The callers buffer could not hold the full message
-    BufferTooSmall = 6,
 }
 
 /// Create a new NetSim Context
@@ -37,13 +54,19 @@ pub enum SimError {
 /// address. Call [`netsim_context_shutdown`] to release the resource.
 ///
 #[no_mangle]
-pub unsafe extern "C" fn netsim_context_new(output: *mut *mut SimContext) -> SimError {
+pub unsafe extern "C" fn netsim_context_new(
+    output: *mut *mut SimContext,
+    on_drop: extern "C" fn(Message),
+) -> SimError {
     if output.is_null() {
         return SimError::NotImplemented;
     }
 
-    let configuration = netsim::SimConfiguration::default();
-    let context = Box::new(SimContext::new(configuration));
+    let configuration = netsim::SimConfiguration {
+        on_drop: Some(on_drop.into()),
+        ..Default::default()
+    };
+    let context = Box::new(SimContext(OSimContext::new(configuration)));
 
     *output = Box::into_raw(context);
     SimError::Success
@@ -63,7 +86,12 @@ pub unsafe extern "C" fn netsim_context_shutdown(context: *mut SimContext) -> Si
         SimError::NullPointerArgument
     } else {
         let context = Box::from_raw(context);
-        match context.shutdown() {
+        // SimContext::shutdown takes ownership of the SimContext
+        // when using `context.shutdown()` we are relying on the
+        // `Deref::deref` function to gain us access to the object
+        // so here we bypass the _dereference_ and move `0` (the context)
+        // out and call shutdown on it.
+        match context.0.shutdown() {
             Ok(()) => SimError::Success,
             Err(error) => {
                 // better handle the error, maybe print it to the standard err output
@@ -93,7 +121,7 @@ pub unsafe extern "C" fn netsim_context_open(
         let Some(context_mut) = context.as_mut() else {
             return SimError::NullPointerArgument;
         };
-        match context_mut.open() {
+        match context_mut.open().map(SimSocket) {
             Ok(sim_socket) => {
                 *output = Box::into_raw(Box::new(sim_socket));
                 SimError::Success
@@ -149,51 +177,43 @@ pub unsafe extern "C" fn netsim_socket_release(socket: *mut SimSocket) -> SimErr
 
 /// Receive a message from the [`SimSocket`]
 ///
+/// On success the function populate the pointed value `msg` with the
+/// received message. As well as `from` with the sender of the message.
+///
 /// # Safety
 ///
-/// The function checks for the context to be a nullpointer before trying
-/// to utilise it. However if the value points to a random value then
-/// the function may have unexpected behaviour.
-/// This function will block until a message is received.
-/// The function expects size to contain the size of the buffer provided.
-/// If the data from the socket is too big for the buffer provided,
-/// size is updated to the larger required buffer size and a BufferTooSmall
-/// error is returned.
-/// Otherwise the size is updated to reflect the length of the data copied into the buffer.
-/// If no data is available from the socket, a SocketDisconnected error is returned.
+/// The function checks the parameters to be non null before trying
+/// to utilise it. However if the pointers point to a random memory then
+/// the function may have unexpected behaviour. Same for `msg` and `from`
+///
 #[no_mangle]
 pub unsafe extern "C" fn netsim_socket_recv(
     socket: *mut SimSocket,
     // pre-allocated byte array
-    msg: *mut u8,
-    // the maximum size of the pre-allocated byte array
-    size: *mut u64,
+    msg: *mut Message,
     // where we will put the sender ID
     from: *mut SimId,
 ) -> SimError {
     let Some(socket) = socket.as_mut() else {
         return SimError::NullPointerArgument;
     };
-    let output = std::slice::from_raw_parts_mut(msg, (*size) as usize);
-
-    let Some((id, data)) = socket.recv() else {
-        // this is usually to signal it is time to release
-        // the socket
-        return SimError::SocketDisconnected;
+    let Some(msg) = msg.as_mut() else {
+        return SimError::NullPointerArgument;
+    };
+    let Some(from) = from.as_mut() else {
+        return SimError::NullPointerArgument;
     };
 
-    *from = id;
-    *size = data.len() as u64;
+    if let Some((id, data)) = socket.recv() {
+        *msg = data;
+        *from = id;
 
-    if data.len() > output.len() {
-        return SimError::BufferTooSmall;
+        SimError::Success
+    } else {
+        // this is usually to signal it is time to release
+        // the socket
+        SimError::SocketDisconnected
     }
-
-    let output_slice = &mut output[..data.len()];
-    // Copy data from `data` to `output_slice`
-    output_slice.copy_from_slice(&data);
-
-    SimError::Success
 }
 
 /// Send a message to the [`SimSocket`]
@@ -211,16 +231,11 @@ pub unsafe extern "C" fn netsim_socket_send_to(
     // where we will put the sender ID
     to: SimId,
     // pre-allocated byte array
-    msg: *mut u8,
-    // the maximum size of the pre-allocated byte array
-    size: u64,
+    msg: Message,
 ) -> SimError {
     let Some(socket) = socket.as_mut() else {
         return SimError::NullPointerArgument;
     };
-    let msg = std::slice::from_raw_parts(msg, size as usize)
-        .to_vec()
-        .into_boxed_slice();
 
     if let Err(error) = socket.send_to(to, msg) {
         eprintln!("{error:?}");
@@ -228,4 +243,28 @@ pub unsafe extern "C" fn netsim_socket_send_to(
     }
 
     SimError::Success
+}
+
+impl Deref for SimContext {
+    type Target = OSimContext<Message>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl DerefMut for SimContext {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl Deref for SimSocket {
+    type Target = OSimSocket<Message>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl DerefMut for SimSocket {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
 }

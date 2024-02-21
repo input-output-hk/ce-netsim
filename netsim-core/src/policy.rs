@@ -10,6 +10,15 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+pub enum PolicyOutcome {
+    //TODO(nicolasdp): implement the drop strategy
+    #[allow(unused)]
+    Drop,
+    Delay {
+        until: SystemTime,
+    },
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Bandwidth(
     /// bits per seconds
@@ -155,7 +164,7 @@ impl Policy {
         self.edge_policies.insert(edge, policy);
     }
 
-    pub(crate) fn message_due_time<T>(&self, msg: &Msg<T>) -> SystemTime
+    fn message_due_time<T>(&self, msg: &Msg<T>) -> SystemTime
     where
         T: HasBytesSize,
     {
@@ -182,5 +191,14 @@ impl Policy {
         let transfer_duration = Duration::from_millis((msg_bits as u128 / bandwidth.0) as u64);
 
         sent_time + edge_policy.latency.to_duration() + transfer_duration
+    }
+
+    pub(crate) fn process<T>(&mut self, msg: &Msg<T>) -> PolicyOutcome
+    where
+        T: HasBytesSize,
+    {
+        PolicyOutcome::Delay {
+            until: self.message_due_time(msg),
+        }
     }
 }

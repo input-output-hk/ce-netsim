@@ -42,16 +42,18 @@ enum SimError
    * This indicates it's time to release the socket
    */
   SimError_SocketDisconnected = 5,
-  /**
-   * The callers buffer could not hold the full message
-   */
-  SimError_BufferTooSmall = 6,
 };
 typedef uint32_t SimError;
 
 typedef struct SimContext SimContext;
 
 typedef struct SimSocket SimSocket;
+
+typedef struct Message
+{
+  void *pointer;
+  uint64_t size;
+} Message;
 
 /**
  * Create a new NetSim Context
@@ -65,7 +67,8 @@ typedef struct SimSocket SimSocket;
  * address. Call [`netsim_context_shutdown`] to release the resource.
  *
  */
-SimError netsim_context_new(struct SimContext **output);
+SimError netsim_context_new(struct SimContext **output,
+                            void (*on_drop)(struct Message));
 
 /**
  * create a new [`SimSocket`] in the given context
@@ -107,22 +110,18 @@ SimError netsim_socket_id(struct SimSocket *socket, SimId *id);
 /**
  * Receive a message from the [`SimSocket`]
  *
+ * On success the function populate the pointed value `msg` with the
+ * received message. As well as `from` with the sender of the message.
+ *
  * # Safety
  *
- * The function checks for the context to be a nullpointer before trying
- * to utilise it. However if the value points to a random value then
- * the function may have unexpected behaviour.
- * This function will block until a message is received.
- * The function expects size to contain the size of the buffer provided.
- * If the data from the socket is too big for the buffer provided,
- * size is updated to the larger required buffer size and a BufferTooSmall
- * error is returned.
- * Otherwise the size is updated to reflect the length of the data copied into the buffer.
- * If no data is available from the socket, a SocketDisconnected error is returned.
+ * The function checks the parameters to be non null before trying
+ * to utilise it. However if the pointers point to a random memory then
+ * the function may have unexpected behaviour. Same for `msg` and `from`
+ *
  */
 SimError netsim_socket_recv(struct SimSocket *socket,
-                            uint8_t *msg,
-                            uint64_t *size,
+                            struct Message *msg,
                             SimId *from);
 
 /**
@@ -150,7 +149,6 @@ SimError netsim_socket_release(struct SimSocket *socket);
  */
 SimError netsim_socket_send_to(struct SimSocket *socket,
                                SimId to,
-                               uint8_t *msg,
-                               uint64_t size);
+                               struct Message msg);
 
 #endif /* NETSIM_LIBC */
