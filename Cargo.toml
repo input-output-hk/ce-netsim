@@ -8,4 +8,5 @@ lto = true
 panic = "abort"
 
 [profile.release.package.netsim-ffi]
+opt-level = 3
 strip = true
