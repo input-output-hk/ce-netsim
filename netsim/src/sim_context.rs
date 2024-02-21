@@ -192,7 +192,7 @@ fn run_mux<T: HasBytesSize>(mut mux: Mux<T>) -> Result<()> {
     while mux.step()? {
         // TODO: configure
         //
-        thread::sleep(Duration::from_millis(200));
+        thread::sleep(Duration::from_micros(20));
     }
 
     Ok(())

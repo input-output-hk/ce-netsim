@@ -5,8 +5,8 @@ resolver = "2"
 
 [profile.release]
 lto = true
+opt-level = 3
 panic = "abort"
 
 [profile.release.package.netsim-ffi]
-opt-level = 3
 strip = true
