@@ -2,13 +2,18 @@
 
 #include "netsim.h"
 
-#define MSG 42
+static char* MSG = "Hello!";
+#define LEN 6
+
+void no_drop(struct Message msg) {
+    // Do nothing, we aren't allocating anything
+}
 
 int main() {
     SimContext* context = NULL;
     SimError error = SimError_Success;
     
-    error = netsim_context_new(&context);
+    error = netsim_context_new(&context, no_drop);
     if (error != SimError_Success) {
         goto exit;
     }
@@ -28,23 +33,22 @@ int main() {
     error = netsim_socket_id(net2, &net2_id);
     if (error != SimError_Success) { goto cleanup; }
 
-    uint8_t msg[1] = { MSG };
-    error = netsim_socket_send_to(net1, net2_id, msg, 1);
+    struct Message msg = { (uint8_t*) MSG, LEN };
+    error = netsim_socket_send_to(net1, net2_id, msg);
     if (error != SimError_Success) { goto cleanup; }
 
-    uint8_t buffer[2] = { 1, 2 };
-    uint64_t size = 2;
+    Message new_msg;
     SimId from;
-    error = netsim_socket_recv(net2, buffer, &size, &from);
+    error = netsim_socket_recv(net2, &new_msg, &from);
     if (error != SimError_Success) { goto cleanup; }
 
-    if (size != 1) {
+    if (new_msg.size != LEN) {
         // wrong size
-        error = 42;
+        error = 41;
     }
-    if (buffer[0] != MSG) {
+    if (new_msg.pointer != (uint8_t*)MSG) {
         // wrong message
-        error = 43;
+        error = 42;
     }
     if (from != net1_id) {
         // wrong sender

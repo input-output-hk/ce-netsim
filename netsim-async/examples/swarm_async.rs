@@ -33,7 +33,7 @@ async fn main() {
     let ids = BeeIds::default();
     let barrier = Arc::new(Barrier::new(cmd.swarm_size));
 
-    let configuration = SimConfiguration::default();
+    let configuration = SimConfiguration::<Msg>::default();
     let mut context: SimContext = SimContext::new(configuration).await;
 
     for _ in 0..cmd.swarm_size {

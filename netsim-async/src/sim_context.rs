@@ -15,7 +15,7 @@ use tokio::{
 
 /// the context to keep on in order to continue adding/removing/monitoring nodes
 /// in the sim-ed network.
-pub struct SimContext<T> {
+pub struct SimContext<T: HasBytesSize> {
     core: SimContextCore<SimUpLink<T>>,
 
     generic_up_link: MuxSend<T>,
@@ -63,7 +63,7 @@ where
     /// multiplexer in the background. Make sure to call [`SimContext::shutdown`]
     /// for a clean shutdown of the background process.
     ///
-    pub async fn new(configuration: SimConfiguration) -> Self {
+    pub async fn new(configuration: SimConfiguration<T>) -> Self {
         let (sim_context_core, sim_mux_core) = new_context(configuration);
 
         let (generic_up_link, bus) = mpsc::unbounded_channel();
