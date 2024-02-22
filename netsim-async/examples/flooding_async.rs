@@ -13,10 +13,6 @@ struct Command {
 
     #[arg(long, default_value = "10")]
     every: u64,
-
-    /// enable the tokio console subscriber
-    #[arg(long)]
-    tokio_console: bool,
 }
 
 const LATENCY: Duration = Duration::from_millis(60);
@@ -24,10 +20,6 @@ const LATENCY: Duration = Duration::from_millis(60);
 #[tokio::main]
 async fn main() {
     let cmd = Command::parse();
-
-    if cmd.tokio_console {
-        console_subscriber::init();
-    }
 
     let configuration = SimConfiguration::default();
 
