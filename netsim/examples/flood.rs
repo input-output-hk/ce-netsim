@@ -10,11 +10,16 @@ type SimContext = netsim::SimContext<Msg>;
 
 #[derive(Parser)]
 struct Command {
+    /// duration in seconds
     #[arg(long, default_value = "60")]
     time: u64,
 
+    /// in milliseconds
     #[arg(long, default_value = "10")]
     every: u64,
+
+    #[arg(long, default_value = "2")]
+    num_tap: usize,
 }
 
 const LATENCY: Duration = Duration::from_millis(60);
@@ -29,12 +34,6 @@ fn main() {
     let sink = Sink {
         socket: context.open().unwrap(),
     };
-    let tap = Tap {
-        socket: context.open().unwrap(),
-        sink_id: sink.socket.id(),
-        every: Duration::from_millis(cmd.every),
-    };
-
     context.set_node_policy(
         sink.socket.id(),
         NodePolicy {
@@ -42,29 +41,47 @@ fn main() {
             bandwidth_up: Bandwidth::bits_per(u64::MAX, Duration::from_secs(1)),
         },
     );
-    context.set_node_policy(
-        tap.socket.id(),
-        NodePolicy {
-            bandwidth_down: Bandwidth::bits_per(u64::MAX, Duration::from_secs(1)),
-            bandwidth_up: Bandwidth::bits_per(u64::MAX, Duration::from_secs(1)),
-        },
-    );
-    context.set_edge_policy(
-        Edge::new((tap.socket.id(), sink.socket.id())),
-        EdgePolicy {
-            latency: Latency::new(LATENCY),
-            packet_loss: PacketLoss::NONE,
-        },
-    );
+
+    let mut taps = Vec::with_capacity(cmd.num_tap);
+    for _ in 0..cmd.num_tap {
+        let tap = Tap {
+            socket: context.open().unwrap(),
+            sink_id: sink.socket.id(),
+            every: Duration::from_millis(cmd.every),
+        };
+
+        context.set_node_policy(
+            tap.socket.id(),
+            NodePolicy {
+                bandwidth_down: Bandwidth::bits_per(u64::MAX, Duration::from_secs(1)),
+                bandwidth_up: Bandwidth::bits_per(u64::MAX, Duration::from_secs(1)),
+            },
+        );
+        context.set_edge_policy(
+            Edge::new((tap.socket.id(), sink.socket.id())),
+            EdgePolicy {
+                latency: Latency::new(LATENCY),
+                packet_loss: PacketLoss::NONE,
+            },
+        );
+
+        taps.push(tap);
+    }
 
     let sink = thread::spawn(|| sink.work());
-    let tap = thread::spawn(|| tap.work());
+
+    let mut taps_ = Vec::with_capacity(cmd.num_tap);
+    for tap in taps {
+        taps_.push(thread::spawn(|| tap.work()));
+    }
 
     sleep(Duration::from_secs(cmd.time));
 
     context.shutdown().unwrap();
     sink.join().unwrap();
-    tap.join().unwrap();
+    for tap in taps_ {
+        tap.join().unwrap();
+    }
 }
 
 struct Sink {
@@ -114,11 +131,7 @@ impl Tap {
 
     fn work(mut self) {
         while self.send_msg() {
-            let now = Instant::now();
             sleep(self.every);
-            let elapsed = now.elapsed();
-
-            println!("{elapsed:?}");
         }
     }
 }
