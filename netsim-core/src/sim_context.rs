@@ -4,7 +4,7 @@ use crate::{
     Edge, EdgePolicy, HasBytesSize, Msg, NameService, NodePolicy, OnDrop, Policy, SimConfiguration,
     SimId, TimeQueue,
 };
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex, RwLock},
@@ -33,6 +33,8 @@ pub struct SimContextCore<UpLink: Link> {
     bus: BusSender<UpLink::Msg>,
 
     links: Links<UpLink>,
+
+    mux_handler: thread::JoinHandle<Result<()>>,
 }
 
 pub struct SimMuxCore<UpLink: Link> {
@@ -49,42 +51,35 @@ pub struct SimMuxCore<UpLink: Link> {
     msgs: TimeQueue<UpLink::Msg>,
 }
 
-pub fn new_context<UpLink: Link + Send + 'static>(
-    configuration: SimConfiguration<UpLink::Msg>,
-) -> SimContextCore<UpLink> {
-    let (sender, receiver) = open_bus();
-
-    let context = SimContextCore::new(configuration.policy, sender);
-
-    let mux = SimMuxCore::new(
-        Arc::clone(context.configuration()),
-        configuration.on_drop,
-        configuration.idle_duration,
-        receiver,
-        Arc::clone(context.links()),
-    );
-
-    let mux_handler = thread::spawn(|| run_mux(mux));
-
-    context
-}
-
 impl<UpLink> SimContextCore<UpLink>
 where
-    UpLink: Link,
+    UpLink: Link + Send + 'static,
 {
-    fn new(policy: Policy, bus: BusSender<UpLink::Msg>) -> Self {
-        let policy = Arc::new(RwLock::new(policy));
+    pub fn new(configuration: SimConfiguration<UpLink::Msg>) -> Self {
+        let policy = Arc::new(RwLock::new(configuration.policy));
         let links = Arc::new(Mutex::new(HashMap::new()));
         let next_sim_id = SimId::ZERO.next(); // Starts at 1
         let ns = NameService::new();
+
+        let (sender, receiver) = open_bus();
+
+        let mux = SimMuxCore::new(
+            Arc::clone(&policy),
+            configuration.on_drop,
+            configuration.idle_duration,
+            receiver,
+            Arc::clone(&links),
+        );
+
+        let mux_handler = thread::spawn(|| run_mux(mux));
 
         Self {
             ns,
             policy,
             next_sim_id,
-            bus,
+            bus: sender,
             links,
+            mux_handler,
         }
     }
 
@@ -135,9 +130,11 @@ where
             .send_shutdown()
             .context("Failed to send shutdown signal to the mutiplexer")?;
 
-        //TODO(nicolasdp): await for the mutiplexer thread to stop
-
-        Ok(())
+        match self.mux_handler.join() {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(error)) => Err(error).context("Multiplexer fails with an error"),
+            Err(join_error) => bail!("Failed to await the mutiplexer's to finish: {join_error:?}"),
+        }
     }
 }
 

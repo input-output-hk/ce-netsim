@@ -3,10 +3,7 @@ use crate::{
     SimConfiguration, SimSocket,
 };
 use anyhow::{Context as _, Result};
-use netsim_core::{
-    sim_context::{new_context, SimContextCore},
-    Edge, EdgePolicy, HasBytesSize, NodePolicy, SimId,
-};
+use netsim_core::{sim_context::SimContextCore, Edge, EdgePolicy, HasBytesSize, NodePolicy, SimId};
 
 pub struct SimContext<T: HasBytesSize> {
     core: SimContextCore<SimUpLink<T>>,
@@ -21,7 +18,7 @@ where
     /// for a clean shutdown of the background process.
     ///
     pub fn new(configuration: SimConfiguration<T>) -> Self {
-        let sim_context_core = new_context(configuration);
+        let sim_context_core = SimContextCore::new(configuration);
 
         Self {
             core: sim_context_core,

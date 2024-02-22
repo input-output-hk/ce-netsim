@@ -1,6 +1,6 @@
 use crate::{link, HasBytesSize, SimSocket, SimUpLink};
 use anyhow::{Context as _, Result};
-use netsim_core::sim_context::{new_context, SimContextCore};
+use netsim_core::sim_context::SimContextCore;
 pub use netsim_core::{Edge, EdgePolicy, NodePolicy, SimConfiguration, SimId};
 
 /// the context to keep on in order to continue adding/removing/monitoring nodes
@@ -18,7 +18,7 @@ where
     /// for a clean shutdown of the background process.
     ///
     pub async fn new(configuration: SimConfiguration<T>) -> Self {
-        let core = new_context(configuration);
+        let core = SimContextCore::new(configuration);
 
         Self { core }
     }
