@@ -1,12 +1,15 @@
 use crate::{
-    policy::PolicyOutcome, Edge, EdgePolicy, HasBytesSize, Msg, NameService, NodePolicy, OnDrop,
-    Policy, SimConfiguration, SimId, TimeQueue,
+    bus::{open_bus, BusMessage, BusReceiver, BusSender},
+    policy::PolicyOutcome,
+    Edge, EdgePolicy, HasBytesSize, Msg, NameService, NodePolicy, OnDrop, Policy, SimConfiguration,
+    SimId, TimeQueue,
 };
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex, RwLock},
-    time::SystemTime,
+    thread,
+    time::{Duration, SystemTime},
 };
 
 /// the collections of up links to other sockets
@@ -16,6 +19,8 @@ type Links<UpLink> = Arc<Mutex<HashMap<SimId, UpLink>>>;
 
 pub trait Link {
     type Msg: HasBytesSize;
+
+    fn send(&self, msg: Msg<Self::Msg>) -> Result<()>;
 }
 
 pub struct SimContextCore<UpLink: Link> {
@@ -25,6 +30,8 @@ pub struct SimContextCore<UpLink: Link> {
 
     next_sim_id: SimId,
 
+    bus: BusSender<UpLink::Msg>,
+
     links: Links<UpLink>,
 }
 
@@ -33,29 +40,40 @@ pub struct SimMuxCore<UpLink: Link> {
 
     on_drop: Option<OnDrop<UpLink::Msg>>,
 
+    idle_duration: Duration,
+
+    bus: BusReceiver<UpLink::Msg>,
+
     links: Links<UpLink>,
 
     msgs: TimeQueue<UpLink::Msg>,
 }
 
-pub fn new_context<UpLink: Link>(
+pub fn new_context<UpLink: Link + Send + 'static>(
     configuration: SimConfiguration<UpLink::Msg>,
-) -> (SimContextCore<UpLink>, SimMuxCore<UpLink>) {
-    let context = SimContextCore::new(configuration.policy);
+) -> SimContextCore<UpLink> {
+    let (sender, receiver) = open_bus();
+
+    let context = SimContextCore::new(configuration.policy, sender);
+
     let mux = SimMuxCore::new(
         Arc::clone(context.configuration()),
         configuration.on_drop,
+        configuration.idle_duration,
+        receiver,
         Arc::clone(context.links()),
     );
 
-    (context, mux)
+    let mux_handler = thread::spawn(|| run_mux(mux));
+
+    context
 }
 
 impl<UpLink> SimContextCore<UpLink>
 where
     UpLink: Link,
 {
-    fn new(policy: Policy) -> Self {
+    fn new(policy: Policy, bus: BusSender<UpLink::Msg>) -> Self {
         let policy = Arc::new(RwLock::new(policy));
         let links = Arc::new(Mutex::new(HashMap::new()));
         let next_sim_id = SimId::ZERO.next(); // Starts at 1
@@ -65,6 +83,7 @@ where
             ns,
             policy,
             next_sim_id,
+            bus,
             links,
         }
     }
@@ -89,6 +108,10 @@ where
         self.policy.write().unwrap().set_node_policy(node, policy)
     }
 
+    pub fn bus(&self) -> BusSender<UpLink::Msg> {
+        self.bus.clone()
+    }
+
     pub fn new_link(&mut self, link: UpLink) -> Result<SimId> {
         let id = self.next_sim_id;
 
@@ -106,6 +129,16 @@ where
         self.next_sim_id = id.next();
         Ok(id)
     }
+
+    pub fn shutdown(self) -> Result<()> {
+        self.bus
+            .send_shutdown()
+            .context("Failed to send shutdown signal to the mutiplexer")?;
+
+        //TODO(nicolasdp): await for the mutiplexer thread to stop
+
+        Ok(())
+    }
 }
 
 impl<UpLink> SimMuxCore<UpLink>
@@ -115,13 +148,17 @@ where
     fn new(
         policy: Arc<RwLock<Policy>>,
         on_drop: Option<OnDrop<UpLink::Msg>>,
+        idle_duration: Duration,
+        bus: BusReceiver<UpLink::Msg>,
         links: Links<UpLink>,
     ) -> Self {
         let msgs = TimeQueue::new();
         Self {
             policy,
             on_drop,
+            idle_duration,
             links,
+            bus,
             msgs,
         }
     }
@@ -169,4 +206,76 @@ where
     pub fn earliest_outbound_time(&self) -> Option<SystemTime> {
         self.msgs.time_to_next_msg()
     }
+
+    fn propagate_msgs(&mut self) -> Result<()> {
+        for msg in self.outbound_messages()? {
+            self.propagate_msg(msg)?;
+        }
+
+        Ok(())
+    }
+
+    fn propagate_msg(&mut self, msg: Msg<UpLink::Msg>) -> Result<()> {
+        let dst = msg.to();
+        let mut addresses = self
+            .links()
+            .lock()
+            .map_err(|error| anyhow!("Failed to acquire address, mutex poisonned {error}"))?;
+
+        match addresses.entry(dst) {
+            std::collections::hash_map::Entry::Occupied(entry) => {
+                if entry.get().send(msg).is_err() {
+                    entry.remove();
+                }
+            }
+            std::collections::hash_map::Entry::Vacant(_) => {
+                // do nothing
+            }
+        }
+
+        Ok(())
+    }
+
+    fn step(&mut self) -> Result<MuxOutcome> {
+        while let Some(bus_message) = self.bus.try_receive() {
+            match bus_message {
+                BusMessage::Disconnected | BusMessage::Shutdown => {
+                    return Ok(MuxOutcome::Shutdown);
+                }
+                BusMessage::Message(msg) => self.inbound_message(msg)?,
+            }
+        }
+
+        self.propagate_msgs()?;
+
+        Ok(MuxOutcome::Continue)
+    }
+
+    pub(crate) fn sleep_time(&mut self) -> Duration {
+        let Some(time) = self.earliest_outbound_time() else {
+            return self.idle_duration;
+        };
+
+        SystemTime::now()
+            .duration_since(time)
+            .unwrap_or(self.idle_duration)
+    }
+}
+
+enum MuxOutcome {
+    Continue,
+    Shutdown,
+}
+
+fn run_mux<UpLink: Link>(mut mux: SimMuxCore<UpLink>) -> Result<()> {
+    loop {
+        match mux.step()? {
+            MuxOutcome::Continue => (),
+            MuxOutcome::Shutdown => break,
+        }
+
+        thread::sleep(mux.sleep_time());
+    }
+
+    Ok(())
 }

@@ -1,3 +1,4 @@
+mod bus;
 pub mod defaults;
 mod msg;
 mod name_service;
@@ -6,7 +7,10 @@ pub mod sim_context;
 mod sim_id;
 mod time_queue;
 
+use std::time::Duration;
+
 pub use self::{
+    bus::BusSender,
     msg::{HasBytesSize, Msg, MsgWith},
     name_service::NameService,
     policy::{Bandwidth, Edge, EdgePolicy, Latency, NodePolicy, PacketLoss, Policy},
@@ -38,6 +42,8 @@ pub struct SimConfiguration<T> {
     pub policy: policy::Policy,
 
     pub on_drop: Option<OnDrop<T>>,
+
+    pub idle_duration: Duration,
 }
 
 impl<T> Default for SimConfiguration<T> {
@@ -45,6 +51,7 @@ impl<T> Default for SimConfiguration<T> {
         Self {
             policy: policy::Policy::new(),
             on_drop: None,
+            idle_duration: Duration::from_micros(500),
         }
     }
 }

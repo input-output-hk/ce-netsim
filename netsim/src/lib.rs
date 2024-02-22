@@ -5,22 +5,21 @@ use std::sync::mpsc;
 
 pub use crate::sim_context::SimContext;
 use anyhow::Result;
-use netsim_core::Msg;
 pub use netsim_core::{
     Bandwidth, Edge, EdgePolicy, HasBytesSize, Latency, NodePolicy, PacketLoss, SimConfiguration,
     SimId,
 };
-use sim_context::MuxSend;
+use netsim_core::{BusSender, Msg};
 use sim_link::SimDownLink;
 
 pub struct SimSocket<T> {
     id: SimId,
-    up: MuxSend<T>,
+    up: BusSender<T>,
     down: SimDownLink<T>,
 }
 
 impl<T> SimSocket<T> {
-    pub(crate) fn new(id: SimId, to_bus: MuxSend<T>, receiver: SimDownLink<T>) -> Self {
+    pub(crate) fn new(id: SimId, to_bus: BusSender<T>, receiver: SimDownLink<T>) -> Self {
         Self {
             id,
             up: to_bus,
@@ -45,7 +44,7 @@ where
 {
     pub fn send_to(&self, to: SimId, msg: T) -> Result<()> {
         let msg = Msg::new(self.id(), to, msg);
-        self.up.send(msg)
+        self.up.send_msg(msg)
     }
 
     /// blocking call to receiving message on the channel
