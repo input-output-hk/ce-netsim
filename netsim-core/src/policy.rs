@@ -156,12 +156,20 @@ impl Policy {
         self.node_policies.insert(node, policy);
     }
 
+    pub fn reset_node_policy(&mut self, node: SimId) {
+        self.node_policies.remove(&node);
+    }
+
     pub fn get_edge_policy(&self, edge: Edge) -> Option<EdgePolicy> {
         self.edge_policies.get(&edge).copied()
     }
 
     pub fn set_edge_policy(&mut self, edge: Edge, policy: EdgePolicy) {
         self.edge_policies.insert(edge, policy);
+    }
+
+    pub fn reset_edge_policy(&mut self, edge: Edge) {
+        self.edge_policies.remove(&edge);
     }
 
     fn message_due_time<T>(&self, msg: &Msg<T>) -> SystemTime

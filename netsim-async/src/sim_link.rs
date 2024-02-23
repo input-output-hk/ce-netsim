@@ -17,21 +17,7 @@ where
     T: HasBytesSize,
 {
     type Msg = T;
-}
-
-pub struct SimUpLink<T> {
-    sender: mpsc::UnboundedSender<Msg<T>>,
-}
-
-pub struct SimDownLink<T> {
-    receiver: mpsc::UnboundedReceiver<Msg<T>>,
-}
-
-impl<T> SimUpLink<T>
-where
-    T: HasBytesSize,
-{
-    pub(crate) fn send(&self, msg: Msg<T>) -> Result<()> {
+    fn send(&self, msg: Msg<T>) -> Result<()> {
         self.sender.send(msg).map_err(|error| {
             anyhow!(
                 "Failed to send Msg ({size} bytes) from {from}, to {to}",
@@ -41,11 +27,14 @@ where
             )
         })
     }
+}
 
-    #[inline]
-    pub(crate) fn is_closed(&self) -> bool {
-        self.sender.is_closed()
-    }
+pub struct SimUpLink<T> {
+    sender: mpsc::UnboundedSender<Msg<T>>,
+}
+
+pub struct SimDownLink<T> {
+    receiver: mpsc::UnboundedReceiver<Msg<T>>,
 }
 
 impl<T> SimDownLink<T>

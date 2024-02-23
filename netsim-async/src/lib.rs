@@ -1,14 +1,10 @@
-mod shutdown;
 mod sim_context;
 mod sim_link;
 
 pub use self::sim_context::SimContext;
-pub(crate) use self::{
-    shutdown::{ShutdownController, ShutdownReceiver},
-    sim_context::MuxSend,
-    sim_link::{link, SimDownLink, SimUpLink},
-};
+pub(crate) use self::sim_link::{link, SimDownLink, SimUpLink};
 use anyhow::Result;
+use netsim_core::BusSender;
 pub(crate) use netsim_core::Msg;
 pub use netsim_core::{
     Bandwidth, Edge, EdgePolicy, HasBytesSize, Latency, NodePolicy, PacketLoss, SimConfiguration,
@@ -17,7 +13,7 @@ pub use netsim_core::{
 
 pub struct SimSocket<T> {
     id: SimId,
-    up: MuxSend<T>,
+    up: BusSender<T>,
     down: SimDownLink<T>,
 }
 
@@ -28,11 +24,11 @@ pub struct SimSocketReadHalf<T> {
 
 pub struct SimSocketWriteHalf<T> {
     id: SimId,
-    up: MuxSend<T>,
+    up: BusSender<T>,
 }
 
 impl<T> SimSocket<T> {
-    pub(crate) fn new(id: SimId, to_bus: MuxSend<T>, receiver: SimDownLink<T>) -> Self {
+    pub(crate) fn new(id: SimId, to_bus: BusSender<T>, receiver: SimDownLink<T>) -> Self {
         Self {
             id,
             up: to_bus,
@@ -64,7 +60,7 @@ where
 {
     pub fn send_to(&self, to: SimId, msg: T) -> Result<()> {
         let msg = Msg::new(self.id(), to, msg);
-        self.up.send(msg)
+        self.up.send_msg(msg)
     }
 
     pub async fn recv(&mut self) -> Option<(SimId, T)> {
@@ -86,7 +82,7 @@ where
 {
     pub fn send_to(&self, to: SimId, msg: T) -> Result<()> {
         let msg = Msg::new(self.id, to, msg);
-        self.up.send(msg)
+        self.up.send_msg(msg)
     }
 }
 

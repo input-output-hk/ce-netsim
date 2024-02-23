@@ -2,57 +2,17 @@ use crate::{
     sim_link::{link, SimUpLink},
     SimConfiguration, SimSocket,
 };
-use anyhow::{anyhow, bail, Context as _, Result};
-use netsim_core::{
-    sim_context::{new_context, SimContextCore, SimMuxCore},
-    Edge, EdgePolicy, HasBytesSize, Msg, NodePolicy, SimId,
-};
-use std::{
-    sync::{
-        atomic::{self, AtomicBool},
-        mpsc, Arc,
-    },
-    thread,
-    time::Duration,
-};
+use anyhow::{Context as _, Result};
+use netsim_core::{sim_context::SimContextCore, Edge, EdgePolicy, HasBytesSize, NodePolicy, SimId};
 
+/// This is the execution context/controller of a simulated network
+///
+/// It is possible to have multiple [SimContext] opened concurrently
+/// in the same process. Howver the nodes of a given context
+/// will not be able to send messages to nodes of different context.
+///
 pub struct SimContext<T: HasBytesSize> {
     core: SimContextCore<SimUpLink<T>>,
-    generic_up_link: MuxSend<T>,
-
-    shutdown: Arc<AtomicBool>,
-    mux_handler: thread::JoinHandle<Result<()>>,
-}
-
-pub struct MuxSend<T>(mpsc::Sender<Msg<T>>);
-
-struct Mux<T>
-where
-    T: HasBytesSize,
-{
-    core: SimMuxCore<SimUpLink<T>>,
-    bus: mpsc::Receiver<Msg<T>>,
-
-    shutdown: Arc<AtomicBool>,
-}
-
-impl<T> Clone for MuxSend<T> {
-    fn clone(&self) -> Self {
-        MuxSend(self.0.clone())
-    }
-}
-
-impl<T: HasBytesSize> MuxSend<T> {
-    pub(crate) fn send(&self, msg: Msg<T>) -> Result<()> {
-        self.0.send(msg).map_err(|error| {
-            anyhow!(
-                "Failed to send Msg ({size} bytes) from {from}, to {to}",
-                from = error.0.from(),
-                to = error.0.to(),
-                size = error.0.content().bytes_size(),
-            )
-        })
-    }
 }
 
 impl<T> SimContext<T>
@@ -63,31 +23,70 @@ where
     /// multiplexer in the background. Make sure to call [`SimContext::shutdown`]
     /// for a clean shutdown of the background process.
     ///
-    pub fn new(configuration: SimConfiguration<T>) -> Self {
-        let (sim_context_core, sim_mux_core) = new_context(configuration);
-        let (generic_up_link, bus) = mpsc::channel();
+    /// This function use the default [`SimConfiguration`].
+    /// Use [`SimContext::with_config`] to start a [`SimContext`] with specific
+    /// configurations.
+    /// [`NodePolicy`] and [`EdgePolicy`] may still be set dynamically while the
+    /// simulation is running.
+    ///
+    /// Note that this function starts a _multiplexer_ in a physical thread.
+    pub fn new() -> Self {
+        let configuration = SimConfiguration::default();
 
-        let shutdown = Arc::new(AtomicBool::new(false));
-        let mux = Mux::new(sim_mux_core, Arc::clone(&shutdown), bus);
-        let mux_handler = thread::spawn(|| run_mux(mux));
+        Self::with_config(configuration)
+    }
+
+    /// create a new [`SimContext`]. Creating this object will also start a
+    /// multiplexer in the background. Make sure to call [`SimContext::shutdown`]
+    /// for a clean shutdown of the background process.
+    ///
+    /// Note that this function starts a _multiplexer_ in a physical thread.
+    ///
+    pub fn with_config(configuration: SimConfiguration<T>) -> Self {
+        let sim_context_core = SimContextCore::new(configuration);
 
         Self {
             core: sim_context_core,
-            generic_up_link: MuxSend(generic_up_link),
-            shutdown,
-            mux_handler,
         }
     }
 
+    /// set a specific policy between the two `Node` that compose the [`Edge`].
+    ///
+    /// when no specific policies are set, the default policies are used.
+    /// To reset, use [`SimContext::reset_edge_policy`], and the default
+    /// policy will be used again.
+    ///
     pub fn set_edge_policy(&mut self, edge: Edge, policy: EdgePolicy) {
         self.core.set_edge_policy(edge, policy)
     }
 
+    /// Reset the [`EdgePolicy`] between two nodes of an [`Edge`]. The default
+    /// EdgePolicy for this SimContext will be used.
+    ///
+    pub fn reset_edge_policy(&mut self, edge: Edge) {
+        self.core.reset_edge_policy(edge)
+    }
+
+    /// Set a specific [`NodePolicy`] for a given node ([SimSocket]).
+    ///
+    /// If not set, the default [NodePolicy] for the [SimContext] will be
+    /// used instead.
+    ///
+    /// Call [`SimContext::reset_node_policy`] to reset the [`NodePolicy`]
+    /// so that the default policy will be used onward.
     pub fn set_node_policy(&mut self, node: SimId, policy: NodePolicy) {
         self.core.set_node_policy(node, policy)
     }
 
-    /// Open a new [`SimSocket`] with the given configuration
+    /// Reset the specific [`NodePolicy`] associated to the given node
+    /// ([SimSocket]) so that the default policy will be used again going
+    /// forward.
+    pub fn reset_node_policy(&mut self, node: SimId) {
+        self.core.reset_node_policy(node)
+    }
+
+    /// Open a new [`SimSocket`] within the given context
+    ///
     pub fn open(&mut self) -> Result<SimSocket<T>> {
         let (up, down) = link();
 
@@ -96,104 +95,26 @@ where
             .new_link(up)
             .context("Failed to reserve a new SimId")?;
 
-        Ok(SimSocket::new(address, self.generic_up_link.clone(), down))
+        Ok(SimSocket::new(address, self.core.bus(), down))
     }
 
+    /// Shutdown the context. All remaining opened [SimSocket] will become
+    /// non functional and will return a `Disconnected` error when trying
+    /// to receive messages or when trying to send messages
+    ///
+    /// This function is blocking and will block until the multiplexer
+    /// thread has shutdown.
+    ///
     pub fn shutdown(self) -> Result<()> {
-        self.shutdown.store(true, atomic::Ordering::Relaxed);
-
-        match self.mux_handler.join() {
-            Ok(Ok(())) => Ok(()),
-            Ok(Err(error)) => Err(error).context("NetSim Multiplexer error"),
-            Err(error) => {
-                bail!("NetSim Multiplexer panicked: {error:?}")
-            }
-        }
+        self.core.shutdown()
     }
 }
 
-impl<T> Mux<T>
+impl<T> Default for SimContext<T>
 where
     T: HasBytesSize,
 {
-    fn new(
-        core: SimMuxCore<SimUpLink<T>>,
-        shutdown: Arc<AtomicBool>,
-        bus: mpsc::Receiver<Msg<T>>,
-    ) -> Self {
-        Self {
-            core,
-            bus,
-            shutdown,
-        }
+    fn default() -> Self {
+        Self::new()
     }
-
-    fn process_new_msg(&mut self, msg: Msg<T>) -> Result<()> {
-        self.core.inbound_message(msg)
-    }
-
-    fn propagate_msgs(&mut self) -> Result<()> {
-        for msg in self.core.outbound_messages()? {
-            self.propagate_msg(msg)?;
-        }
-
-        Ok(())
-    }
-
-    fn propagate_msg(&mut self, msg: Msg<T>) -> Result<()> {
-        let dst = msg.to();
-        let mut addresses = self
-            .core
-            .links()
-            .lock()
-            .map_err(|error| anyhow!("Failed to acquire address, mutex poisonned {error}"))?;
-
-        match addresses.entry(dst) {
-            std::collections::hash_map::Entry::Occupied(entry) => {
-                if entry.get().send(msg).is_err() {
-                    entry.remove();
-                }
-            }
-            std::collections::hash_map::Entry::Vacant(_) => {
-                // do nothing
-            }
-        }
-
-        Ok(())
-    }
-
-    fn handle_bus_msg(&mut self) -> Result<bool> {
-        match self.bus.try_recv() {
-            Ok(msg) => {
-                self.process_new_msg(msg)?;
-                Ok(true)
-            }
-            Err(mpsc::TryRecvError::Empty) => Ok(false),
-            Err(mpsc::TryRecvError::Disconnected) => bail!("No more sender connected on the bus"),
-        }
-    }
-
-    fn step(&mut self) -> Result<bool> {
-        // check we haven't been requested to shutdown
-        if self.shutdown.load(atomic::Ordering::Relaxed) {
-            return Ok(false);
-        }
-
-        // process all the messages on the bus
-        while self.handle_bus_msg()? {}
-
-        self.propagate_msgs()?;
-
-        Ok(!self.shutdown.load(atomic::Ordering::Relaxed))
-    }
-}
-
-fn run_mux<T: HasBytesSize>(mut mux: Mux<T>) -> Result<()> {
-    while mux.step()? {
-        // TODO: configure
-        //
-        thread::sleep(Duration::from_micros(20));
-    }
-
-    Ok(())
 }

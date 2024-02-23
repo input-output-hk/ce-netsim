@@ -24,16 +24,7 @@ where
     T: HasBytesSize,
 {
     type Msg = T;
-}
-
-impl<T> SimUpLink<T>
-where
-    T: HasBytesSize,
-{
-    /// non blocking call to send a message
-    ///
-    /// Error only occurs if the receiving ends has hanged up
-    pub(crate) fn send(&self, msg: Msg<T>) -> Result<()> {
+    fn send(&self, msg: Msg<Self::Msg>) -> Result<()> {
         self.sender.send(msg).map_err(|error| {
             anyhow!(
                 "Failed to send Msg ({size} bytes) from {from}, to {to}",

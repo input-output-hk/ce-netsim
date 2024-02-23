@@ -20,6 +20,9 @@ struct Command {
 
     #[arg(long, default_value = "2")]
     num_tap: usize,
+
+    #[arg(long, default_value = "500")]
+    idle: u64,
 }
 
 const LATENCY: Duration = Duration::from_millis(60);
@@ -27,9 +30,12 @@ const LATENCY: Duration = Duration::from_millis(60);
 fn main() {
     let cmd = Command::parse();
 
-    let configuration = SimConfiguration::default();
+    let configuration = SimConfiguration {
+        idle_duration: Duration::from_micros(cmd.idle),
+        ..SimConfiguration::default()
+    };
 
-    let mut context: SimContext = SimContext::new(configuration);
+    let mut context: SimContext = SimContext::with_config(configuration);
 
     let sink = Sink {
         socket: context.open().unwrap(),

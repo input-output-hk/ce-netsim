@@ -1,12 +1,11 @@
-use netsim::{SimConfiguration, SimContext};
+use netsim::SimContext;
 use netsim_core::{Edge, EdgePolicy, Latency};
 use std::time::{Duration, Instant};
 
 const MSG: &str = "Hello World!";
 
 fn main() {
-    let configuration = SimConfiguration::default();
-    let mut context: SimContext<&'static str> = SimContext::new(configuration);
+    let mut context: SimContext<&'static str> = SimContext::default();
 
     let net1 = context.open().unwrap();
     let mut net2 = context.open().unwrap();

@@ -16,19 +16,11 @@ type BeeIds = Arc<RwLock<Vec<SimId>>>;
 struct Command {
     #[arg(long, default_value = "1000")]
     swarm_size: usize,
-
-    /// enable the tokio console subscriber
-    #[arg(long)]
-    tokio_console: bool,
 }
 
 #[tokio::main]
 async fn main() {
     let cmd = Command::parse();
-
-    if cmd.tokio_console {
-        console_subscriber::init();
-    }
 
     let ids = BeeIds::default();
     let barrier = Arc::new(Barrier::new(cmd.swarm_size));
