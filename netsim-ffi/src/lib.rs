@@ -66,7 +66,7 @@ pub unsafe extern "C" fn netsim_context_new(
         on_drop: Some(on_drop.into()),
         ..Default::default()
     };
-    let context = Box::new(SimContext(OSimContext::new(configuration)));
+    let context = Box::new(SimContext(OSimContext::with_config(configuration)));
 
     *output = Box::into_raw(context);
     SimError::Success

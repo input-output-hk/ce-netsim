@@ -35,7 +35,7 @@ fn main() {
         ..SimConfiguration::default()
     };
 
-    let mut context: SimContext = SimContext::new(configuration);
+    let mut context: SimContext = SimContext::with_config(configuration);
 
     let sink = Sink {
         socket: context.open().unwrap(),

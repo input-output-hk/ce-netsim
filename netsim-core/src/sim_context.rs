@@ -99,8 +99,16 @@ where
         self.policy.write().unwrap().set_edge_policy(edge, policy)
     }
 
+    pub fn reset_edge_policy(&mut self, edge: Edge) {
+        self.policy.write().unwrap().reset_edge_policy(edge)
+    }
+
     pub fn set_node_policy(&mut self, node: SimId, policy: NodePolicy) {
         self.policy.write().unwrap().set_node_policy(node, policy)
+    }
+
+    pub fn reset_node_policy(&mut self, node: SimId) {
+        self.policy.write().unwrap().reset_node_policy(node)
     }
 
     pub fn bus(&self) -> BusSender<UpLink::Msg> {
