@@ -5,6 +5,7 @@ mod name_service;
 mod policy;
 pub mod sim_context;
 mod sim_id;
+pub mod time;
 mod time_queue;
 
 use std::time::Duration;
