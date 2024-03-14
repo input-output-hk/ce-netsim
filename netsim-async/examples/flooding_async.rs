@@ -23,7 +23,7 @@ async fn main() {
 
     let configuration = SimConfiguration::default();
 
-    let mut context: SimContext = SimContext::new(configuration).await;
+    let mut context: SimContext = SimContext::with_config(configuration);
 
     let sink = Sink {
         socket: context.open().unwrap(),
@@ -61,7 +61,7 @@ async fn main() {
 
     sleep(Duration::from_secs(cmd.time)).await;
 
-    context.shutdown().await.unwrap();
+    context.shutdown().unwrap();
     sink.await.unwrap();
     tap.await.unwrap();
 }

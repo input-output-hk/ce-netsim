@@ -7,7 +7,7 @@ const MSG: &str = "Hello World!";
 #[tokio::main]
 async fn main() {
     let configuration = SimConfiguration::default();
-    let mut context: SimContext<&'static str> = SimContext::new(configuration).await;
+    let mut context: SimContext<&'static str> = SimContext::with_config(configuration);
 
     let net1 = context.open().unwrap();
     let mut net2 = context.open().unwrap();
@@ -36,5 +36,5 @@ async fn main() {
         net2 = net2.id()
     );
 
-    context.shutdown().await.unwrap();
+    context.shutdown().unwrap();
 }
