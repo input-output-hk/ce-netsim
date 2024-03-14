@@ -1,8 +1,8 @@
 use crate::{
     bus::{open_bus, BusMessage, BusReceiver, BusSender},
     policy::PolicyOutcome,
-    Edge, EdgePolicy, HasBytesSize, Msg, NameService, NodePolicy, OnDrop, Policy, SimConfiguration,
-    SimId, TimeQueue,
+    Edge, EdgePolicy, HasBytesSize, Msg, NodePolicy, OnDrop, Policy, SimConfiguration, SimId,
+    TimeQueue,
 };
 use anyhow::{anyhow, bail, Context, Result};
 use std::{
@@ -31,8 +31,6 @@ pub trait Link {
 ///
 pub struct SimContextCore<UpLink: Link> {
     policy: Arc<RwLock<Policy>>,
-
-    ns: NameService,
 
     next_sim_id: SimId,
 
@@ -86,7 +84,6 @@ where
         let policy = Arc::new(RwLock::new(configuration.policy));
         let links = Arc::new(Mutex::new(HashMap::new()));
         let next_sim_id = SimId::ZERO.next(); // Starts at 1
-        let ns = NameService::new();
 
         let (sender, receiver) = open_bus();
 
@@ -101,7 +98,6 @@ where
         let mux_handler = thread::spawn(|| run_mux(mux));
 
         Self {
-            ns,
             policy,
             next_sim_id,
             bus: sender,
@@ -116,10 +112,6 @@ where
 
     pub fn links(&self) -> &Links<UpLink> {
         &self.links
-    }
-
-    pub fn ns(&self) -> &NameService {
-        &self.ns
     }
 
     /// set a specific policy between the two `Node` that compose the [`Edge`].
