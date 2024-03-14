@@ -37,7 +37,7 @@ impl<T> From<extern "C" fn(T)> for OnDrop<T> {
 unsafe impl<T> Send for OnDrop<T> {}
 impl<T> Drop for OnDrop<T> {
     fn drop(&mut self) {
-        // Do nothing, this is a poitner that is expected to live all the way
+        // Do nothing, this is a pointer that is expected to live all the way
     }
 }
 
