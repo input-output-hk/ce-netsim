@@ -4,9 +4,13 @@ use crate::{
     },
     HasBytesSize, Msg, SimId,
 };
+use anyhow::{bail, ensure};
+use logos::{Lexer, Logos};
 use std::{
     cmp::min,
     collections::HashMap,
+    fmt::Display,
+    str::FromStr,
     time::{Duration, SystemTime},
 };
 
@@ -24,6 +28,22 @@ pub struct Bandwidth(
     /// bits per seconds
     u128,
 );
+
+#[derive(Logos, Debug, PartialEq)]
+#[logos(skip r"[ \t\n\f]+")] // Ignore this regex pattern between tokens
+enum BandwidthToken {
+    #[regex("bps")]
+    Bps,
+    #[regex("kbps")]
+    Kbps,
+    #[regex("mbps")]
+    Mbps,
+    #[regex("gbps")]
+    Gbps,
+
+    #[regex("[0-9]+")]
+    Value,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Latency(Duration);
@@ -208,5 +228,99 @@ impl Policy {
         PolicyOutcome::Delay {
             until: self.message_due_time(msg),
         }
+    }
+}
+
+const K: u128 = 1_024;
+const M: u128 = 1_024 * 1_024;
+const G: u128 = 1_024 * 1_024 * 1_024;
+
+impl Display for Bandwidth {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let v = self.0;
+        let k = self.0 / K;
+        let m = self.0 / M;
+        let g = self.0 / G;
+
+        let v_r = self.0 % K;
+        let k_r = self.0 % M;
+        let m_r = self.0 % G;
+
+        if v < K || v_r != 0 {
+            write!(f, "{v}bps")
+        } else if v < M || k_r != 0 {
+            write!(f, "{k}kbps")
+        } else if v < G || m_r != 0 {
+            write!(f, "{m}mbps")
+        } else {
+            write!(f, "{g}gbps")
+        }
+    }
+}
+
+impl FromStr for Bandwidth {
+    type Err = anyhow::Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut lex = Lexer::<'_, BandwidthToken>::new(s);
+
+        let Some(Ok(BandwidthToken::Value)) = lex.next() else {
+            bail!("Expecting to parse a number")
+        };
+        let number: u128 = lex.slice().parse()?;
+        let Some(Ok(token)) = lex.next() else {
+            bail!("Expecting to parse a unit")
+        };
+        let bps = match token {
+            BandwidthToken::Bps => number,
+            BandwidthToken::Kbps => number * 1_024,
+            BandwidthToken::Mbps => number * 1_024 * 1_024,
+            BandwidthToken::Gbps => number * 1_024 * 1_024 * 1_024,
+            BandwidthToken::Value => bail!("Expecting to parse a unit (bps, kbps, ...)"),
+        };
+
+        ensure!(
+            lex.next().is_none(),
+            "Not expecting any other tokens to parse a bandwidth"
+        );
+
+        Ok(Self(bps))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_bandwidth() {
+        macro_rules! assert_bandwidth {
+            ($string:literal == $value:expr) => {
+                assert_eq!($string.parse::<Bandwidth>().unwrap(), Bandwidth($value));
+            };
+        }
+
+        assert_bandwidth!("0bps" == 0);
+        assert_bandwidth!("42bps" == 42);
+        assert_bandwidth!("42kbps" == 42 * 1_024);
+        assert_bandwidth!("42mbps" == 42 * 1_024 * 1_024);
+    }
+
+    #[test]
+    fn print_bandwidth() {
+        macro_rules! assert_bandwidth {
+            (($bandwidth:expr) == $string:literal) => {
+                assert_eq!(Bandwidth($bandwidth).to_string(), $string);
+            };
+        }
+
+        assert_bandwidth!((0) == "0bps");
+        assert_bandwidth!((42) == "42bps");
+        assert_bandwidth!((42 * K) == "42kbps");
+        assert_bandwidth!((42 * M) == "42mbps");
+        assert_bandwidth!((42 * G) == "42gbps");
+
+        assert_bandwidth!((12_345) == "12345bps");
+        assert_bandwidth!((12_345 * K) == "12345kbps");
+        assert_bandwidth!((12_345 * M) == "12345mbps");
     }
 }

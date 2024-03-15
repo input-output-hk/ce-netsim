@@ -1,9 +1,9 @@
 use clap::Parser;
 use netsim::{HasBytesSize, SimConfiguration, SimId, SimSocket};
-use netsim_core::{Bandwidth, Edge, EdgePolicy, Latency, NodePolicy, PacketLoss};
+use netsim_core::{time::Duration, Bandwidth, Edge, EdgePolicy, Latency, NodePolicy, PacketLoss};
 use std::{
     thread::{self, sleep},
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 type SimContext = netsim::SimContext<Msg>;
@@ -11,27 +11,33 @@ type SimContext = netsim::SimContext<Msg>;
 #[derive(Parser)]
 struct Command {
     /// duration in seconds
-    #[arg(long, default_value = "60")]
-    time: u64,
+    #[arg(long, default_value = "60s")]
+    time: Duration,
 
     /// in milliseconds
-    #[arg(long, default_value = "10")]
-    every: u64,
+    #[arg(long, default_value = "10ms")]
+    every: Duration,
 
     #[arg(long, default_value = "2")]
     num_tap: usize,
 
-    #[arg(long, default_value = "500")]
-    idle: u64,
-}
+    #[arg(long, default_value = "500us")]
+    idle: Duration,
 
-const LATENCY: Duration = Duration::from_millis(60);
+    #[arg(long, default_value = "10gbps")]
+    bandwidth_down: Bandwidth,
+    #[arg(long, default_value = "10gbps")]
+    bandwidth_up: Bandwidth,
+
+    #[arg(long, default_value = "1ms")]
+    latency: Duration,
+}
 
 fn main() {
     let cmd = Command::parse();
 
     let configuration = SimConfiguration {
-        idle_duration: Duration::from_micros(cmd.idle),
+        idle_duration: cmd.idle.into_duration(),
         ..SimConfiguration::default()
     };
 
@@ -39,12 +45,13 @@ fn main() {
 
     let sink = Sink {
         socket: context.open().unwrap(),
+        latency: cmd.latency,
     };
     context.set_node_policy(
         sink.socket.id(),
         NodePolicy {
-            bandwidth_down: Bandwidth::bits_per(u64::MAX, Duration::from_secs(1)),
-            bandwidth_up: Bandwidth::bits_per(u64::MAX, Duration::from_secs(1)),
+            bandwidth_down: cmd.bandwidth_down,
+            bandwidth_up: cmd.bandwidth_up,
         },
     );
 
@@ -53,20 +60,20 @@ fn main() {
         let tap = Tap {
             socket: context.open().unwrap(),
             sink_id: sink.socket.id(),
-            every: Duration::from_millis(cmd.every),
+            every: cmd.every,
         };
 
         context.set_node_policy(
             tap.socket.id(),
             NodePolicy {
-                bandwidth_down: Bandwidth::bits_per(u64::MAX, Duration::from_secs(1)),
-                bandwidth_up: Bandwidth::bits_per(u64::MAX, Duration::from_secs(1)),
+                bandwidth_down: cmd.bandwidth_down,
+                bandwidth_up: cmd.bandwidth_up,
             },
         );
         context.set_edge_policy(
             Edge::new((tap.socket.id(), sink.socket.id())),
             EdgePolicy {
-                latency: Latency::new(LATENCY),
+                latency: Latency::new(cmd.latency.into_duration()),
                 packet_loss: PacketLoss::NONE,
             },
         );
@@ -81,7 +88,7 @@ fn main() {
         taps_.push(thread::spawn(|| tap.work()));
     }
 
-    sleep(Duration::from_secs(cmd.time));
+    sleep(cmd.time.into_duration());
 
     context.shutdown().unwrap();
     sink.join().unwrap();
@@ -92,6 +99,7 @@ fn main() {
 
 struct Sink {
     socket: SimSocket<Msg>,
+    latency: Duration,
 }
 
 impl Sink {
@@ -101,17 +109,17 @@ impl Sink {
         while let Some((_from, msg)) = self.socket.recv() {
             let latency = msg.time.elapsed();
 
-            let diff = if latency < LATENCY {
-                LATENCY - latency
+            let diff = if latency < self.latency.into_duration() {
+                self.latency.into_duration() - latency
             } else {
-                latency - LATENCY
+                latency - self.latency.into_duration()
             };
 
             delays.push(diff);
         }
 
         let len = delays.len();
-        let total = delays.iter().copied().sum::<Duration>();
+        let total = delays.iter().copied().sum::<std::time::Duration>();
         let avg = total / delays.len() as u32;
 
         println!("sent {len} messages over. Msg received with an average of {avg:?} delays to the expected LATENCY");
@@ -137,7 +145,7 @@ impl Tap {
 
     fn work(mut self) {
         while self.send_msg() {
-            sleep(self.every);
+            sleep(self.every.into_duration());
         }
     }
 }
