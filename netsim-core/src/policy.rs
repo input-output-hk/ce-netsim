@@ -6,20 +6,14 @@ use crate::{
 };
 use anyhow::{bail, ensure};
 use logos::{Lexer, Logos};
-use std::{
-    cmp::min,
-    collections::HashMap,
-    fmt::Display,
-    str::FromStr,
-    time::{Duration, SystemTime},
-};
+use std::{cmp::min, collections::HashMap, fmt::Display, str::FromStr, time::Duration};
 
 pub enum PolicyOutcome {
     //TODO(nicolasdp): implement the drop strategy
     #[allow(unused)]
     Drop,
     Delay {
-        until: SystemTime,
+        delay: Duration,
     },
 }
 
@@ -192,13 +186,12 @@ impl Policy {
         self.edge_policies.remove(&edge);
     }
 
-    fn message_due_time<T>(&self, msg: &Msg<T>) -> SystemTime
+    fn message_delay<T>(&self, msg: &Msg<T>) -> Duration
     where
         T: HasBytesSize,
     {
         let from = msg.from();
         let to = msg.to();
-        let sent_time = msg.time();
         let msg_bits = msg.content().bytes_size() * 8;
 
         let upload_bandwidth = self
@@ -218,7 +211,7 @@ impl Policy {
 
         let transfer_duration = Duration::from_millis((msg_bits as u128 / bandwidth.0) as u64);
 
-        sent_time + edge_policy.latency.to_duration() + transfer_duration
+        edge_policy.latency.to_duration() + transfer_duration
     }
 
     pub(crate) fn process<T>(&mut self, msg: &Msg<T>) -> PolicyOutcome
@@ -226,7 +219,7 @@ impl Policy {
         T: HasBytesSize,
     {
         PolicyOutcome::Delay {
-            until: self.message_due_time(msg),
+            delay: self.message_delay(msg),
         }
     }
 }

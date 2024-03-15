@@ -126,7 +126,10 @@ mod tests {
         let entry_due_time = entry_sent_time + DURATION;
         let current_time = SystemTime::now() + 2 * DURATION;
 
-        c.push(entry_due_time, Msg::new(SIM_ID, SIM_ID, ()));
+        c.push(
+            entry_due_time,
+            Msg::new(SIM_ID, SIM_ID, entry_sent_time, ()),
+        );
 
         assert!(!c.is_empty());
         assert_eq!(c.len(), 1);

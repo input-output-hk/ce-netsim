@@ -1,6 +1,8 @@
 mod sim_context;
 mod sim_link;
 
+use std::time::SystemTime;
+
 pub use self::sim_context::SimContext;
 pub(crate) use self::sim_link::{link, SimDownLink, SimUpLink};
 use anyhow::Result;
@@ -59,7 +61,7 @@ where
     T: HasBytesSize,
 {
     pub fn send_to(&self, to: SimId, msg: T) -> Result<()> {
-        let msg = Msg::new(self.id(), to, msg);
+        let msg = Msg::new(self.id(), to, SystemTime::now(), msg);
         self.up.send_msg(msg)
     }
 
@@ -81,7 +83,7 @@ where
     T: HasBytesSize,
 {
     pub fn send_to(&self, to: SimId, msg: T) -> Result<()> {
-        let msg = Msg::new(self.id, to, msg);
+        let msg = Msg::new(self.id, to, SystemTime::now(), msg);
         self.up.send_msg(msg)
     }
 }

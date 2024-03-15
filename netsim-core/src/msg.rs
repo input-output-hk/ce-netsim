@@ -29,11 +29,11 @@ pub struct MsgWith<T> {
 }
 
 impl<T> Msg<T> {
-    pub fn new(from: SimId, to: SimId, content: T) -> Self {
+    pub fn new(from: SimId, to: SimId, time: SystemTime, content: T) -> Self {
         Self {
             from,
             to,
-            time: SystemTime::now(),
+            time,
             content,
         }
     }
