@@ -1,8 +1,8 @@
 use crate::{
     bus::{open_bus, BusMessage, BusReceiver, BusSender},
     policy::PolicyOutcome,
-    Edge, EdgePolicy, HasBytesSize, Msg, NameService, NodePolicy, OnDrop, Policy, SimConfiguration,
-    SimId, TimeQueue,
+    Edge, EdgePolicy, HasBytesSize, Msg, NodePolicy, OnDrop, Policy, SimConfiguration, SimId,
+    TimeQueue,
 };
 use anyhow::{anyhow, bail, Context, Result};
 use std::{
@@ -23,10 +23,14 @@ pub trait Link {
     fn send(&self, msg: Msg<Self::Msg>) -> Result<()>;
 }
 
+/// This is the execution context/controller of a simulated network
+///
+/// It is possible to have multiple [SimContext] opened concurrently
+/// in the same process. However the nodes of a given context
+/// will not be able to send messages to nodes of different context.
+///
 pub struct SimContextCore<UpLink: Link> {
     policy: Arc<RwLock<Policy>>,
-
-    ns: NameService,
 
     next_sim_id: SimId,
 
@@ -55,11 +59,31 @@ impl<UpLink> SimContextCore<UpLink>
 where
     UpLink: Link + Send + 'static,
 {
-    pub fn new(configuration: SimConfiguration<UpLink::Msg>) -> Self {
+    /// create a new [`SimContext`]. Creating this object will also start a
+    /// multiplexer in the background. Make sure to call [`SimContext::shutdown`]
+    /// for a clean shutdown of the background process.
+    ///
+    /// This function use the default [`SimConfiguration`].
+    /// Use [`SimContext::with_config`] to start a [`SimContext`] with specific
+    /// configurations.
+    /// [`NodePolicy`] and [`EdgePolicy`] may still be set dynamically while the
+    /// simulation is running.
+    ///
+    /// Note that this function starts a _multiplexer_ in a physical thread.
+    pub fn new() -> Self {
+        Self::with_config(SimConfiguration::default())
+    }
+
+    /// create a new [`SimContext`]. Creating this object will also start a
+    /// multiplexer in the background. Make sure to call [`SimContext::shutdown`]
+    /// for a clean shutdown of the background process.
+    ///
+    /// Note that this function starts a _multiplexer_ in a physical thread.
+    ///
+    pub fn with_config(configuration: SimConfiguration<UpLink::Msg>) -> Self {
         let policy = Arc::new(RwLock::new(configuration.policy));
         let links = Arc::new(Mutex::new(HashMap::new()));
         let next_sim_id = SimId::ZERO.next(); // Starts at 1
-        let ns = NameService::new();
 
         let (sender, receiver) = open_bus();
 
@@ -74,7 +98,6 @@ where
         let mux_handler = thread::spawn(|| run_mux(mux));
 
         Self {
-            ns,
             policy,
             next_sim_id,
             bus: sender,
@@ -91,22 +114,38 @@ where
         &self.links
     }
 
-    pub fn ns(&self) -> &NameService {
-        &self.ns
-    }
-
+    /// set a specific policy between the two `Node` that compose the [`Edge`].
+    ///
+    /// when no specific policies are set, the default policies are used.
+    /// To reset, use [`SimContext::reset_edge_policy`], and the default
+    /// policy will be used again.
+    ///
     pub fn set_edge_policy(&mut self, edge: Edge, policy: EdgePolicy) {
         self.policy.write().unwrap().set_edge_policy(edge, policy)
     }
 
+    /// Reset the [`EdgePolicy`] between two nodes of an [`Edge`]. The default
+    /// EdgePolicy for this SimContext will be used.
+    ///
     pub fn reset_edge_policy(&mut self, edge: Edge) {
         self.policy.write().unwrap().reset_edge_policy(edge)
     }
 
+    /// Set a specific [`NodePolicy`] for a given node ([SimSocket]).
+    ///
+    /// If not set, the default [NodePolicy] for the [SimContext] will be
+    /// used instead.
+    ///
+    /// Call [`SimContext::reset_node_policy`] to reset the [`NodePolicy`]
+    /// so that the default policy will be used onward.
+    ///
     pub fn set_node_policy(&mut self, node: SimId, policy: NodePolicy) {
         self.policy.write().unwrap().set_node_policy(node, policy)
     }
 
+    /// Reset the specific [`NodePolicy`] associated to the given node
+    /// ([SimSocket]) so that the default policy will be used again going
+    /// forward.
     pub fn reset_node_policy(&mut self, node: SimId) {
         self.policy.write().unwrap().reset_node_policy(node)
     }
@@ -133,6 +172,13 @@ where
         Ok(id)
     }
 
+    /// Shutdown the context. All remaining opened [SimSocket] will become
+    /// non functional and will return a `Disconnected` error when trying
+    /// to receive messages or when trying to send messages
+    ///
+    /// This function is blocking and will block until the multiplexer
+    /// thread has shutdown.
+    ///
     pub fn shutdown(self) -> Result<()> {
         self.bus
             .send_shutdown()
@@ -283,4 +329,13 @@ fn run_mux<UpLink: Link>(mut mux: SimMuxCore<UpLink>) -> Result<()> {
     }
 
     Ok(())
+}
+
+impl<UpLink> Default for SimContextCore<UpLink>
+where
+    UpLink: Link + Send + 'static,
+{
+    fn default() -> Self {
+        Self::new()
+    }
 }

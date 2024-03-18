@@ -26,7 +26,7 @@ async fn main() {
     let barrier = Arc::new(Barrier::new(cmd.swarm_size));
 
     let configuration = SimConfiguration::<Msg>::default();
-    let mut context: SimContext = SimContext::new(configuration).await;
+    let mut context: SimContext = SimContext::with_config(configuration);
 
     for _ in 0..cmd.swarm_size {
         let (reader, writer) = context.open().unwrap().into_split();
@@ -45,7 +45,7 @@ async fn main() {
 
     sleep(Duration::from_secs(60)).await;
 
-    context.shutdown().await.unwrap();
+    context.shutdown().unwrap();
 }
 
 struct BusyBee {

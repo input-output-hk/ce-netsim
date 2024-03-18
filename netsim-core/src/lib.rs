@@ -1,7 +1,6 @@
 mod bus;
 pub mod defaults;
 mod msg;
-mod name_service;
 mod policy;
 pub mod sim_context;
 mod sim_id;
@@ -15,7 +14,6 @@ use defaults::DEFAULT_IDLE;
 pub use self::{
     bus::BusSender,
     msg::{HasBytesSize, Msg, MsgWith},
-    name_service::NameService,
     policy::{Bandwidth, Edge, EdgePolicy, Latency, NodePolicy, PacketLoss, Policy},
     sim_id::SimId,
     time_queue::TimeQueue,
@@ -37,7 +35,7 @@ impl<T> From<extern "C" fn(T)> for OnDrop<T> {
 unsafe impl<T> Send for OnDrop<T> {}
 impl<T> Drop for OnDrop<T> {
     fn drop(&mut self) {
-        // Do nothing, this is a poitner that is expected to live all the way
+        // Do nothing, this is a pointer that is expected to live all the way
     }
 }
 
