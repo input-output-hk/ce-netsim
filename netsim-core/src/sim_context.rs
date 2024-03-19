@@ -9,7 +9,7 @@ use std::{
     collections::HashMap,
     sync::{Arc, Mutex, RwLock},
     thread,
-    time::{Duration, SystemTime},
+    time::{Duration, Instant},
 };
 
 /// the collections of up links to other sockets
@@ -251,7 +251,7 @@ where
     /// these are the messages that are due to be sent.
     /// This function may returns an empty `Vec` and this
     /// simply means there are no messages to be forwarded
-    pub fn outbound_messages(&mut self, time: SystemTime) -> Result<Vec<Msg<UpLink::Msg>>> {
+    pub fn outbound_messages(&mut self, time: Instant) -> Result<Vec<Msg<UpLink::Msg>>> {
         Ok(self.msgs.pop_all_elapsed(time))
     }
 
@@ -259,11 +259,11 @@ where
     ///
     /// Function returns `None` if there are no due messages
     /// to forward
-    pub fn earliest_outbound_time(&self) -> Option<SystemTime> {
+    pub fn earliest_outbound_time(&self) -> Option<Instant> {
         self.msgs.time_to_next_msg()
     }
 
-    fn propagate_msgs(&mut self, time: SystemTime) -> Result<()> {
+    fn propagate_msgs(&mut self, time: Instant) -> Result<()> {
         for msg in self.outbound_messages(time)? {
             self.propagate_msg(msg)?;
         }
@@ -292,7 +292,7 @@ where
         Ok(())
     }
 
-    fn step(&mut self, time: SystemTime) -> Result<MuxOutcome> {
+    fn step(&mut self, time: Instant) -> Result<MuxOutcome> {
         while let Some(bus_message) = self.bus.try_receive() {
             match bus_message {
                 BusMessage::Disconnected | BusMessage::Shutdown => {
@@ -307,14 +307,12 @@ where
         Ok(MuxOutcome::Continue)
     }
 
-    pub(crate) fn sleep_time(&mut self, current_time: SystemTime) -> Duration {
+    pub(crate) fn sleep_time(&mut self, current_time: Instant) -> Instant {
         let Some(time) = self.earliest_outbound_time() else {
-            return self.idle_duration;
+            return current_time + self.idle_duration;
         };
 
-        current_time
-            .duration_since(time)
-            .unwrap_or(self.idle_duration)
+        std::cmp::min(time, current_time + self.idle_duration)
     }
 }
 
@@ -325,14 +323,23 @@ enum MuxOutcome {
 
 fn run_mux<UpLink: Link>(mut mux: SimMuxCore<UpLink>) -> Result<()> {
     loop {
-        let time = SystemTime::now();
+        let time = Instant::now();
 
         match mux.step(time)? {
             MuxOutcome::Continue => (),
             MuxOutcome::Shutdown => break,
         }
 
-        thread::sleep(mux.sleep_time(time));
+        #[cfg(not(feature = "thread_sleep_until"))]
+        {
+            let dur = mux.sleep_time(time).duration_since(Instant::now());
+            thread::sleep(dur)
+        }
+
+        // TODO: use when thread_sleep_until is stabilised
+        // https://github.com/rust-lang/rust/issues/113752
+        #[cfg(feature = "thread_sleep_until")]
+        thread::sleep_until(mux.sleep_time(time));
     }
 
     Ok(())

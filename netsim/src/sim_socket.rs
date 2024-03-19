@@ -1,7 +1,7 @@
 use crate::{sim_link::SimDownLink, HasBytesSize, SimId};
 use anyhow::Result;
 use netsim_core::{BusSender, Msg};
-use std::{sync::mpsc, time::SystemTime};
+use std::sync::mpsc;
 
 pub struct SimSocket<T> {
     reader: SimSocketReadHalf<T>,
@@ -85,7 +85,7 @@ where
     T: HasBytesSize,
 {
     pub fn send_to(&self, to: SimId, msg: T) -> Result<()> {
-        let msg = Msg::new(self.id, to, SystemTime::now(), msg);
+        let msg = Msg::new(self.id, to, msg);
         self.up.send_msg(msg)
     }
 }
