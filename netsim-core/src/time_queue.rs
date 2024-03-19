@@ -1,7 +1,7 @@
 use crate::msg::MsgWith;
 use crate::Msg;
 use core::cmp::Reverse;
-use std::{collections::BinaryHeap, time::SystemTime};
+use std::{collections::BinaryHeap, time::Instant};
 
 pub struct TimeQueue<T> {
     map: BinaryHeap<Reverse<OrderedByTime<T>>>,
@@ -57,7 +57,7 @@ impl<T> TimeQueue<T> {
     }
 
     #[inline]
-    pub fn time_to_next_msg(&self) -> Option<SystemTime> {
+    pub fn time_to_next_msg(&self) -> Option<Instant> {
         self.map.peek().map(|v| v.0.inner().reception_time)
     }
 
@@ -65,7 +65,7 @@ impl<T> TimeQueue<T> {
         self.map.pop().map(|v| v.0.into_inner().msg)
     }
 
-    pub fn pop_all_elapsed(&mut self, time: SystemTime) -> Vec<Msg<T>> {
+    pub fn pop_all_elapsed(&mut self, time: Instant) -> Vec<Msg<T>> {
         let mut msgs = Vec::new();
         loop {
             match self.map.peek() {
@@ -85,7 +85,7 @@ impl<T> TimeQueue<T> {
         msgs
     }
 
-    pub fn push(&mut self, time: SystemTime, msg: Msg<T>) {
+    pub fn push(&mut self, time: Instant, msg: Msg<T>) {
         let m = MsgWith {
             reception_time: time,
             msg,
@@ -104,7 +104,7 @@ impl<T> Default for TimeQueue<T> {
 mod tests {
     use super::*;
     use crate::SimId;
-    use std::time::{Duration, SystemTime};
+    use std::time::Duration;
 
     #[test]
     fn empty() {
@@ -122,9 +122,9 @@ mod tests {
     #[test]
     fn entry() {
         let mut c = TimeQueue::<()>::new();
-        let entry_sent_time = SystemTime::now();
+        let entry_sent_time = Instant::now();
         let entry_due_time = entry_sent_time + DURATION;
-        let current_time = SystemTime::now() + 2 * DURATION;
+        let current_time = Instant::now() + 2 * DURATION;
 
         c.push(entry_due_time, Msg::new(SIM_ID, SIM_ID, ()));
 

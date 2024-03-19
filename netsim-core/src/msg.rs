@@ -1,5 +1,5 @@
 use crate::SimId;
-use std::time::SystemTime;
+use std::time::Instant;
 
 /// Trait for message content that will be sent via
 /// [`send_to`] and [`recv`] function of the [`SimSocket`].
@@ -19,13 +19,13 @@ pub trait HasBytesSize: Send + 'static {
 pub struct Msg<T> {
     from: SimId,
     to: SimId,
-    time: SystemTime,
+    time: Instant,
     content: T,
 }
 
 pub struct MsgWith<T> {
     pub msg: Msg<T>,
-    pub reception_time: SystemTime,
+    pub reception_time: Instant,
 }
 
 impl<T> Msg<T> {
@@ -33,7 +33,7 @@ impl<T> Msg<T> {
         Self {
             from,
             to,
-            time: SystemTime::now(),
+            time: Instant::now(),
             content,
         }
     }
@@ -46,7 +46,7 @@ impl<T> Msg<T> {
         self.to
     }
 
-    pub fn time(&self) -> SystemTime {
+    pub fn time(&self) -> Instant {
         self.time
     }
 
