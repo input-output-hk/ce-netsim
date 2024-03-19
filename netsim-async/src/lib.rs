@@ -14,9 +14,8 @@ pub use netsim_core::{
 };
 
 pub struct SimSocket<T> {
-    id: SimId,
-    up: BusSender<T>,
-    down: SimDownLink<T>,
+    reader: SimSocketReadHalf<T>,
+    writer: SimSocketWriteHalf<T>,
 }
 
 pub struct SimSocketReadHalf<T> {
@@ -31,28 +30,19 @@ pub struct SimSocketWriteHalf<T> {
 
 impl<T> SimSocket<T> {
     pub(crate) fn new(id: SimId, to_bus: BusSender<T>, receiver: SimDownLink<T>) -> Self {
-        Self {
-            id,
-            up: to_bus,
-            down: receiver,
-        }
+        let reader = SimSocketReadHalf { id, down: receiver };
+        let writer = SimSocketWriteHalf { id, up: to_bus };
+
+        Self { reader, writer }
     }
 
     pub fn id(&self) -> SimId {
-        self.id
+        self.reader.id()
     }
 
     pub fn into_split(self) -> (SimSocketReadHalf<T>, SimSocketWriteHalf<T>) {
-        let read = SimSocketReadHalf {
-            id: self.id,
-            down: self.down,
-        };
-        let write = SimSocketWriteHalf {
-            id: self.id,
-            up: self.up,
-        };
-
-        (read, write)
+        let Self { reader, writer } = self;
+        (reader, writer)
     }
 }
 
@@ -61,14 +51,11 @@ where
     T: HasBytesSize,
 {
     pub fn send_to(&self, to: SimId, msg: T) -> Result<()> {
-        let msg = Msg::new(self.id(), to, SystemTime::now(), msg);
-        self.up.send_msg(msg)
+        self.writer.send_to(to, msg)
     }
 
     pub async fn recv(&mut self) -> Option<(SimId, T)> {
-        let msg = self.down.recv().await?;
-
-        Some((msg.from(), msg.into_content()))
+        self.reader.recv().await
     }
 }
 
