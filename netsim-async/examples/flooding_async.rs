@@ -39,6 +39,7 @@ async fn main() {
         NodePolicy {
             bandwidth_down: Bandwidth::bits_per(u64::MAX, Duration::from_secs(1)),
             bandwidth_up: Bandwidth::bits_per(u64::MAX, Duration::from_secs(1)),
+            location: None,
         },
     );
     context.set_node_policy(
@@ -46,6 +47,7 @@ async fn main() {
         NodePolicy {
             bandwidth_down: Bandwidth::bits_per(u64::MAX, Duration::from_secs(1)),
             bandwidth_up: Bandwidth::bits_per(u64::MAX, Duration::from_secs(1)),
+            location: None,
         },
     );
     context.set_edge_policy(
