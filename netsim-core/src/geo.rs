@@ -6,7 +6,7 @@ pub type Location = (i64, u64);
 fn location_to_radian((latitude, longitude): (i64, u64)) -> (f64, f64) {
     // latitude is between 90 South and 90 North with a precision of 4 digits
     // longitude is between 0 and 180 degres with a precision of 4 digits
-    assert!(latitude <= 90_0000 && latitude >= -90_0000);
+    assert!((-90_0000..=90_0000).contains(&latitude));
     assert!(longitude <= 180_0000);
 
     (
@@ -79,8 +79,6 @@ pub trait SpheroidDistanceAlgorithm {
 
 impl SpheroidDistanceAlgorithm for VincentyInverse {
     fn calculate(&self, point1: Location, point2: Location, spheroid: Spheroid) -> Option<f64> {
-        //let Location(latitude as f64 / 1000.0, longitude as f64 / 1000.0);
-
         let a = spheroid.alpha;
         let b = spheroid.beta;
         let f = spheroid.inv_flattening;
@@ -147,7 +145,7 @@ impl SpheroidDistanceAlgorithm for VincentyInverse {
             iter_limit -= 1;
         }
 
-        if iter_limit <= 0 {
+        if iter_limit == 0 {
             return None;
         }
 
@@ -171,6 +169,7 @@ impl SpheroidDistanceAlgorithm for VincentyInverse {
     }
 }
 
+#[allow(clippy::manual_range_contains)]
 pub fn latency_between_locations(p1: Location, p2: Location, sol_fo: f64) -> Option<Latency> {
     const SPEED_OF_LIGHT: f64 = 299_792_458.0; // meter per second
     const SPEED_OF_FIBER: f64 = SPEED_OF_LIGHT * 0.69; // light travels 31% slower in fiber optics
