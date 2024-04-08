@@ -22,7 +22,7 @@ fn distance_between(point1: Location, point2: Location) -> Option<f64> {
 
 /// Spheroid parameter
 ///
-/// for earth, usin `Spheroid::earth()`
+/// for earth, use `Spheroid::earth()`
 ///
 /// using WGS-84 geocentric datum parameters
 ///
@@ -55,7 +55,7 @@ impl Spheroid {
     }
 }
 
-/// Vincenty inverse formula, parametrize with the number of maximum iterations
+/// Vincenty inverse formula, parametrized with the number of maximum iterations
 /// for the algorithm
 ///
 /// [Wikipedia Vincenty formulae](https://en.wikipedia.org/wiki/Vincenty%27s_formulae)
