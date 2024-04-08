@@ -1,3 +1,4 @@
+use crate::geo;
 use crate::{
     defaults::{
         DEFAULT_DOWNLOAD_BANDWIDTH, DEFAULT_LATENCY, DEFAULT_PACKET_LOSS, DEFAULT_UPLOAD_BANDWIDTH,
@@ -58,6 +59,7 @@ pub struct Edge {
 pub struct NodePolicy {
     pub bandwidth_down: Bandwidth,
     pub bandwidth_up: Bandwidth,
+    pub location: Option<(i64, u64)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -128,6 +130,7 @@ impl Default for NodePolicy {
         Self {
             bandwidth_down: DEFAULT_DOWNLOAD_BANDWIDTH,
             bandwidth_up: DEFAULT_UPLOAD_BANDWIDTH,
+            location: None,
         }
     }
 }
@@ -136,6 +139,32 @@ impl Default for EdgePolicy {
     fn default() -> Self {
         Self {
             latency: DEFAULT_LATENCY,
+            packet_loss: DEFAULT_PACKET_LOSS,
+        }
+    }
+}
+
+impl EdgePolicy {
+    pub fn between_nodes(
+        node_policies: &HashMap<SimId, NodePolicy>,
+        a: SimId,
+        b: SimId,
+    ) -> EdgePolicy {
+        let loc_a = node_policies.get(&a).and_then(|pol_a| pol_a.location);
+        let loc_b = node_policies.get(&b).and_then(|pol_b| pol_b.location);
+
+        let latency = if let Some(loc_a) = loc_a {
+            if let Some(loc_b) = loc_b {
+                geo::latency_between_locations(loc_a, loc_b, 1.0).unwrap_or(DEFAULT_LATENCY)
+            } else {
+                DEFAULT_LATENCY
+            }
+        } else {
+            DEFAULT_LATENCY
+        };
+
+        Self {
+            latency,
             packet_loss: DEFAULT_PACKET_LOSS,
         }
     }

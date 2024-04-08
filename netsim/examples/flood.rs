@@ -52,6 +52,7 @@ fn main() {
         NodePolicy {
             bandwidth_down: cmd.bandwidth_down,
             bandwidth_up: cmd.bandwidth_up,
+            location: None,
         },
     );
 
@@ -68,6 +69,7 @@ fn main() {
             NodePolicy {
                 bandwidth_down: cmd.bandwidth_down,
                 bandwidth_up: cmd.bandwidth_up,
+                location: None,
             },
         );
         context.set_edge_policy(

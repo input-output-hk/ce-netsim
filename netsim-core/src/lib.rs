@@ -1,5 +1,6 @@
 mod bus;
 pub mod defaults;
+mod geo;
 mod msg;
 mod policy;
 pub mod sim_context;
@@ -44,13 +45,13 @@ pub struct SimConfiguration<T> {
 
     pub on_drop: Option<OnDrop<T>>,
 
-    /// set the maximum IDLE duratation time. This is the time the Multiplexer
+    /// set the maximum IDLE duration time. This is the time the Multiplexer
     /// will wait before checking for pending messages and transition delays.
     ///
     /// By default the value is set to [DEFAULT_IDLE] and this should be
     /// enough for most cases.
     ///
-    /// It is possible to change the values for this. Howver it will affect the
+    /// It is possible to change the values for this. However it will affect the
     /// processing overhead of the simulation's multiplexer.
     ///
     /// Reducing it will guarantee the messages are propagated in time with
