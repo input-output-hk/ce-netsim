@@ -169,12 +169,17 @@ impl SpheroidDistanceAlgorithm for VincentyInverse {
     }
 }
 
-#[allow(clippy::manual_range_contains)]
 pub fn latency_between_locations(p1: Location, p2: Location, sol_fo: f64) -> Option<Latency> {
     const SPEED_OF_LIGHT: f64 = 299_792_458.0; // meter per second
     const SPEED_OF_FIBER: f64 = SPEED_OF_LIGHT * 0.69; // light travels 31% slower in fiber optics
 
-    assert!(sol_fo >= 0.0 && sol_fo <= 1.0);
+    let sol_fo = if sol_fo < 0.01 {
+        0.01
+    } else if sol_fo > 1.0 {
+        1.0
+    } else {
+        sol_fo
+    };
 
     let distance = distance_between(p1, p2);
     distance.map(|d| {
