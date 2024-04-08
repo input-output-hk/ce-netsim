@@ -10,8 +10,8 @@ fn location_to_radian((latitude, longitude): (i64, u64)) -> (f64, f64) {
     assert!(longitude <= 180_0000);
 
     (
-        (latitude as f64 / 1000.0).to_radians(),
-        (longitude as f64 / 1000.0).to_radians(),
+        (latitude as f64 / 10000.0).to_radians(),
+        (longitude as f64 / 10000.0).to_radians(),
     )
 }
 
