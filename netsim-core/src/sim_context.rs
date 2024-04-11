@@ -1,8 +1,8 @@
 use crate::{
     bus::{open_bus, BusMessage, BusReceiver, BusSender},
+    congestion_queue::CongestionQueue,
     policy::PolicyOutcome,
     Edge, EdgePolicy, HasBytesSize, Msg, NodePolicy, OnDrop, Policy, SimConfiguration, SimId,
-    TimeQueue,
 };
 use anyhow::{anyhow, bail, Context, Result};
 use std::{
@@ -52,7 +52,7 @@ pub struct SimMuxCore<UpLink: Link> {
 
     links: Links<UpLink>,
 
-    msgs: TimeQueue<UpLink::Msg>,
+    msgs: CongestionQueue<UpLink::Msg>,
 }
 
 impl<UpLink> SimContextCore<UpLink>
@@ -203,7 +203,7 @@ where
         bus: BusReceiver<UpLink::Msg>,
         links: Links<UpLink>,
     ) -> Self {
-        let msgs = TimeQueue::new();
+        let msgs = CongestionQueue::new();
         Self {
             policy,
             on_drop,
@@ -226,7 +226,7 @@ where
     ///
     /// The message propagation speed will be computed based on
     /// the upload, download and general link speed between
-    pub fn inbound_message(&mut self, msg: Msg<UpLink::Msg>) -> Result<()> {
+    pub fn inbound_message(&mut self, time: Instant, msg: Msg<UpLink::Msg>) -> Result<()> {
         let mut configuration = self.policy.write().expect("Never poisonned");
 
         match configuration.process(&msg) {
@@ -235,12 +235,7 @@ where
                     on_drop.handle(msg.into_content())
                 }
             }
-            PolicyOutcome::Delay { delay } => {
-                // TODO: time acceleration may happen here
-                let until = msg.time() + delay;
-
-                self.msgs.push(until, msg)
-            }
+            PolicyOutcome::Delay { delay } => self.msgs.push(time + delay, msg),
         }
 
         Ok(())
@@ -252,7 +247,7 @@ where
     /// This function may returns an empty `Vec` and this
     /// simply means there are no messages to be forwarded
     pub fn outbound_messages(&mut self, time: Instant) -> Result<Vec<Msg<UpLink::Msg>>> {
-        Ok(self.msgs.pop_all_elapsed(time))
+        Ok(self.msgs.pop_many(time, &self.policy.read().unwrap()))
     }
 
     /// get the earliest time to the next message
@@ -260,7 +255,8 @@ where
     /// Function returns `None` if there are no due messages
     /// to forward
     pub fn earliest_outbound_time(&self) -> Option<Instant> {
-        self.msgs.time_to_next_msg()
+        // self.msgs.time_to_next_msg()
+        None
     }
 
     fn propagate_msgs(&mut self, time: Instant) -> Result<()> {
@@ -298,7 +294,7 @@ where
                 BusMessage::Disconnected | BusMessage::Shutdown => {
                     return Ok(MuxOutcome::Shutdown);
                 }
-                BusMessage::Message(msg) => self.inbound_message(msg)?,
+                BusMessage::Message(msg) => self.inbound_message(time, msg)?,
             }
         }
 

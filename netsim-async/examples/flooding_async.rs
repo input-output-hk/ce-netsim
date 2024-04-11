@@ -55,6 +55,7 @@ async fn main() {
         EdgePolicy {
             latency: Latency::new(LATENCY),
             packet_loss: PacketLoss::NONE,
+            ..Default::default()
         },
     );
 
