@@ -14,7 +14,7 @@ use defaults::DEFAULT_IDLE;
 
 pub use self::{
     bus::BusSender,
-    msg::{HasBytesSize, Msg, MsgWith},
+    msg::{HasBytesSize, Msg},
     policy::{Bandwidth, Edge, EdgePolicy, Latency, NodePolicy, PacketLoss, Policy},
     sim_id::SimId,
 };
