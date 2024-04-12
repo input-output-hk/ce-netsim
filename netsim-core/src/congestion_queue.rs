@@ -62,6 +62,8 @@ impl BufferCounter {
     }
 
     fn refresh(&mut self, time: Instant) {
+        debug_assert!(self.since <= time);
+
         // because we assume the time is only moving forward (sic)
         // we can safely assume that the upload_since will always be
         // lesser or equal to `time` given in parameter
