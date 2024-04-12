@@ -232,3 +232,144 @@ impl<T: HasBytesSize> Default for CongestionQueue<T> {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use crate::{EdgePolicy, Latency, NodePolicy, PacketLoss};
+
+    use super::*;
+
+    #[test]
+    fn buffer_counter_refresh() {
+        let time = Instant::now();
+        let mut bc = BufferCounter::new(time);
+
+        let consummed = bc.consume(time, Bandwidth::from_str("1gbps").unwrap(), 100);
+
+        assert_eq!(bc.counter, consummed);
+
+        let time = time + Duration::from_secs(2);
+        bc.refresh(time);
+
+        assert_eq!(bc.counter, 0)
+    }
+
+    #[test]
+    fn buffer_counter_consume() {
+        let time = Instant::now();
+        let mut bc = BufferCounter::new(time);
+
+        let consummed = bc.consume(time, Bandwidth::from_str("1kbps").unwrap(), 900);
+        assert_eq!(consummed, 900, "We expect the whole message is consummed");
+        assert_eq!(bc.counter, consummed);
+
+        let consummed = bc.consume(time, Bandwidth::from_str("1kbps").unwrap(), 200);
+        assert_eq!(consummed, 124, "only part of the message is consummed");
+        assert_eq!(bc.counter, 1024);
+
+        let consummed = bc.consume(time, Bandwidth::from_str("1kbps").unwrap(), 100);
+        assert_eq!(consummed, 0, "We expect none of the message is consummed");
+        assert_eq!(bc.counter, 1024);
+    }
+
+    struct Event;
+    impl HasBytesSize for Event {
+        fn bytes_size(&self) -> u64 {
+            1_000
+        }
+    }
+
+    const ALICE: SimId = SimId::new(1);
+    const BOB: SimId = SimId::new(2);
+
+    macro_rules! test_pop_message {
+        ($cq:ident, $policy:ident, t: $time:expr, $sender:ident : $s:expr, $link:ident: $l:expr, $receiver:ident : $r:expr $(,)?) => {
+            assert!($cq.pop($time, &$policy, 0).is_none());
+            let sender = $cq.nodes_usage.get(&$sender).unwrap();
+            assert_eq!(
+                sender.upload.counter,
+                $s,
+                "expecting `{sender}' to have `{s}' but only `{sa}' received",
+                sender = ::std::stringify!($sender),
+                s = $s,
+                sa = sender.upload.counter,
+            );
+            assert_eq!(sender.download.counter, 0); // untouched
+
+            let link = $cq.edge_usage.get(&$link).unwrap();
+            assert_eq!(link.download.counter, 0); // always 0
+            assert_eq!(
+                link.upload.counter,
+                $l,
+                "expecting `{link}' to have `{l}' but only `{la}' received",
+                link = ::std::stringify!($link),
+                l = $l,
+                la = link.upload.counter,
+            );
+
+            let receiver = $cq.nodes_usage.get(&$receiver).unwrap();
+            assert_eq!(receiver.upload.counter, 0);
+            assert_eq!(
+                receiver.download.counter,
+                $r,
+                "expecting `{receiver}' to have `{r}' but only `{ra}' received",
+                receiver = ::std::stringify!($receiver),
+                r = $r,
+                ra = receiver.download.counter,
+            );
+        };
+    }
+
+    #[test]
+    fn congestion_queue_pop() {
+        #[allow(non_snake_case)]
+        let ALICE_BOB: Edge = Edge::new((ALICE, BOB));
+
+        let mut policy = Policy::new();
+        policy.set_default_node_policy(NodePolicy {
+            bandwidth_down: "100bps".parse().unwrap(),
+            bandwidth_up: "100bps".parse().unwrap(),
+            location: None,
+        });
+        policy.set_default_edge_policy(EdgePolicy {
+            bandwidth_down: "10bps".parse().unwrap(),
+            bandwidth_up: "10bps".parse().unwrap(),
+            latency: Latency::new(Duration::ZERO),
+            packet_loss: PacketLoss::NONE,
+        });
+
+        let mut cq = CongestionQueue::<Event>::new();
+
+        let time = Instant::now();
+        cq.push(time, Msg::new(ALICE, BOB, Event));
+
+        // First we will need to do 10 iterations to clear alice's buffer
+        for i in 0..10 {
+            test_pop_message!(
+                cq, policy,
+                t: time + Duration::from_secs(i),
+                ALICE: 100,
+                ALICE_BOB: 10,
+                BOB: 10,
+            );
+        }
+
+        // then we need another 99 operation to _nearly_ clear
+        // the link and BOB's buffers
+        for i in 10..99 {
+            // we expect the counter to be rest and fully used once more
+            test_pop_message!(
+                cq, policy,
+                t: time + Duration::from_secs(i),
+                ALICE: 0,
+                ALICE_BOB: 10,
+                BOB: 10,
+            );
+        }
+
+        // it should take 100 iteration to pop the message
+        assert!(cq.pop(time + Duration::from_secs(99), &policy, 0).is_some());
+    }
+}
