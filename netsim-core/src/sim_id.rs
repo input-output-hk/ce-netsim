@@ -5,7 +5,7 @@ use anyhow::anyhow;
 /// The identifier of a peer in the SimNetwork
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(C)]
-pub struct SimId(u64);
+pub struct SimId(pub(crate) u64);
 
 impl SimId {
     pub(crate) const ZERO: Self = SimId::new(0);

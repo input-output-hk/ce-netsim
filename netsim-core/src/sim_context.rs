@@ -6,7 +6,6 @@ use crate::{
 };
 use anyhow::{anyhow, bail, Context, Result};
 use std::{
-    collections::HashMap,
     sync::{Arc, Mutex, RwLock},
     thread,
     time::{Duration, Instant},
@@ -15,7 +14,7 @@ use std::{
 /// the collections of up links to other sockets
 ///
 /// This is parameterised so that we can set async or non async channel
-type Links<UpLink> = Arc<Mutex<HashMap<SimId, UpLink>>>;
+type Links<UpLink> = Arc<Mutex<Vec<UpLink>>>;
 
 pub trait Link {
     type Msg: HasBytesSize;
@@ -82,7 +81,7 @@ where
     ///
     pub fn with_config(configuration: SimConfiguration<UpLink::Msg>) -> Self {
         let policy = Arc::new(RwLock::new(configuration.policy));
-        let links = Arc::new(Mutex::new(HashMap::new()));
+        let links = Arc::new(Mutex::new(Vec::new()));
         let next_sim_id = SimId::ZERO; // Starts at 0
 
         let (sender, receiver) = open_bus();
@@ -157,18 +156,19 @@ where
     pub fn new_link(&mut self, link: UpLink) -> Result<SimId> {
         let id = self.next_sim_id;
 
-        let collision = self
-            .links
+        self.links
             .lock()
             .map_err(|error| anyhow!("Failed to lock on the links: {error}"))?
-            .insert(id, link);
-
-        debug_assert!(
-            collision.is_none(),
-            "Collision of SimId (here: {id}) shouldn't be possible"
-        );
+            .push(SimLink::new(link));
 
         self.next_sim_id = id.next();
+
+        debug_assert_eq!(
+            self.links.lock().unwrap().len(),
+            self.next_sim_id.0 as usize,
+            "The next available SimId is the lenght of the vec"
+        );
+
         Ok(id)
     }
 
@@ -274,18 +274,12 @@ where
             .lock()
             .map_err(|error| anyhow!("Failed to acquire address, mutex poisonned {error}"))?;
 
-        match addresses.entry(dst) {
-            std::collections::hash_map::Entry::Occupied(entry) => {
-                if entry.get().send(msg).is_err() {
-                    entry.remove();
-                }
-            }
-            std::collections::hash_map::Entry::Vacant(_) => {
-                // do nothing
-            }
+        if let Some(link) = addresses.get_mut(dst.0 as usize) {
+            let _error = link.send(msg);
+            Ok(())
+        } else {
+            panic!("We shouldn't have any recipient of messages with an index that is not valid")
         }
-
-        Ok(())
     }
 
     fn step(&mut self, time: Instant) -> Result<MuxOutcome> {
