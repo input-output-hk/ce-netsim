@@ -4,7 +4,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{Bandwidth, Edge, HasBytesSize, Msg, Policy, SimId};
+use crate::{sim_context::SimLinks, Bandwidth, Edge, HasBytesSize, Msg, Policy, SimId};
 
 /// used to keep track of how much of a packet has been sent through
 /// one of the network components (sender, link and receiver).
@@ -138,7 +138,13 @@ where
         self.queue.push_back(envelop)
     }
 
-    fn pop(&mut self, time: Instant, policy: &Policy, index: usize) -> Option<Msg<T>> {
+    fn pop<UpLink>(
+        &mut self,
+        time: Instant,
+        nodes: &SimLinks<UpLink>,
+        policy: &Policy,
+        index: usize,
+    ) -> Option<Msg<T>> {
         let envelop = self.queue.get_mut(index)?;
         if envelop.latency > time {
             // we ignore messages that are still meant to be delayed
@@ -154,8 +160,8 @@ where
             .entry(envelop.msg.from())
             .and_modify(|u| u.refresh(time))
             .or_insert_with(|| Usage::new(time));
-        let s_policy = policy
-            .get_node_policy(envelop.msg.from())
+        let s_policy = nodes[envelop.msg.from().into_index()]
+            .policy()
             .unwrap_or_else(|| policy.default_node_policy());
         let remaining_size = message_size - envelop.sender;
         let used = s
@@ -183,8 +189,8 @@ where
             .entry(envelop.msg.to())
             .and_modify(|u| u.refresh(time))
             .or_insert_with(|| Usage::new(time));
-        let r_policy = policy
-            .get_node_policy(envelop.msg.to())
+        let r_policy = nodes[envelop.msg.to().into_index()]
+            .policy()
             .unwrap_or_else(|| policy.default_node_policy());
         let remaining_size = envelop.link - envelop.receiver;
         let used = r
@@ -205,7 +211,12 @@ where
         }
     }
 
-    pub fn pop_many(&mut self, time: Instant, policy: &Policy) -> Vec<Msg<T>> {
+    pub fn pop_many<UpLink>(
+        &mut self,
+        time: Instant,
+        nodes: &SimLinks<UpLink>,
+        policy: &Policy,
+    ) -> Vec<Msg<T>> {
         let mut msgs = Vec::new();
 
         let mut index = 0usize;
@@ -216,7 +227,7 @@ where
         // which means that when we remove an entry we won't increase the `index`
         // but the size is still reduced because the queue has an entry less
         while index < self.queue.len() {
-            if let Some(entry) = self.pop(time, policy, index) {
+            if let Some(entry) = self.pop(time, nodes, policy, index) {
                 msgs.push(entry);
             } else {
                 index += 1;
@@ -237,7 +248,7 @@ impl<T: HasBytesSize> Default for CongestionQueue<T> {
 mod tests {
     use std::str::FromStr;
 
-    use crate::{EdgePolicy, Latency, NodePolicy, PacketLoss};
+    use crate::{sim_context::SimLink, EdgePolicy, Latency, NodePolicy, PacketLoss};
 
     use super::*;
 
@@ -281,12 +292,12 @@ mod tests {
         }
     }
 
-    const ALICE: SimId = SimId::new(1);
-    const BOB: SimId = SimId::new(2);
+    const ALICE: SimId = SimId::new(0);
+    const BOB: SimId = SimId::new(1);
 
     macro_rules! test_pop_message {
-        ($cq:ident, $policy:ident, t: $time:expr, $sender:ident : $s:expr, $link:ident: $l:expr, $receiver:ident : $r:expr $(,)?) => {
-            assert!($cq.pop($time, &$policy, 0).is_none());
+        ($cq:ident, $nodes:ident, $policy:ident, t: $time:expr, $sender:ident : $s:expr, $link:ident: $l:expr, $receiver:ident : $r:expr $(,)?) => {
+            assert!($cq.pop($time, &$nodes, &$policy, 0).is_none());
             let sender = $cq.nodes_usage.get(&$sender).unwrap();
             assert_eq!(
                 sender.upload.counter,
@@ -323,6 +334,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::vec_init_then_push)]
     fn congestion_queue_pop() {
         #[allow(non_snake_case)]
         let ALICE_BOB: Edge = Edge::new((ALICE, BOB));
@@ -340,6 +352,10 @@ mod tests {
             packet_loss: PacketLoss::NONE,
         });
 
+        let mut nodes = SimLinks::<()>::new();
+        nodes.push(SimLink::new(()));
+        nodes.push(SimLink::new(()));
+
         let mut cq = CongestionQueue::<Event>::new();
 
         let time = Instant::now();
@@ -348,7 +364,7 @@ mod tests {
         // First we will need to do 10 iterations to clear alice's buffer
         for i in 0..10 {
             test_pop_message!(
-                cq, policy,
+                cq, nodes, policy,
                 t: time + Duration::from_secs(i),
                 ALICE: 100,
                 ALICE_BOB: 10,
@@ -361,7 +377,7 @@ mod tests {
         for i in 10..99 {
             // we expect the counter to be rest and fully used once more
             test_pop_message!(
-                cq, policy,
+                cq, nodes, policy,
                 t: time + Duration::from_secs(i),
                 ALICE: 0,
                 ALICE_BOB: 10,
@@ -370,6 +386,8 @@ mod tests {
         }
 
         // it should take 100 iteration to pop the message
-        assert!(cq.pop(time + Duration::from_secs(99), &policy, 0).is_some());
+        assert!(cq
+            .pop(time + Duration::from_secs(99), &nodes, &policy, 0)
+            .is_some());
     }
 }

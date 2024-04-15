@@ -18,6 +18,12 @@ impl SimId {
     pub(crate) fn next(self) -> Self {
         Self::new(self.0 + 1)
     }
+
+    /// we use the `SimId` as index of the array of links
+    #[inline(always)]
+    pub(crate) fn into_index(self) -> usize {
+        self.0 as usize
+    }
 }
 
 impl str::FromStr for SimId {

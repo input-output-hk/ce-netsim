@@ -75,7 +75,6 @@ pub struct Policy {
     default_node_policy: NodePolicy,
     default_edge_policy: EdgePolicy,
 
-    node_policies: HashMap<SimId, NodePolicy>,
     edge_policies: HashMap<Edge, EdgePolicy>,
 }
 
@@ -193,18 +192,6 @@ impl Policy {
 
     pub fn set_default_edge_policy(&mut self, default_edge_policy: EdgePolicy) {
         self.default_edge_policy = default_edge_policy;
-    }
-
-    pub fn get_node_policy(&self, node: SimId) -> Option<NodePolicy> {
-        self.node_policies.get(&node).copied()
-    }
-
-    pub fn set_node_policy(&mut self, node: SimId, policy: NodePolicy) {
-        self.node_policies.insert(node, policy);
-    }
-
-    pub fn reset_node_policy(&mut self, node: SimId) {
-        self.node_policies.remove(&node);
     }
 
     pub fn get_edge_policy(&self, edge: Edge) -> Option<EdgePolicy> {
