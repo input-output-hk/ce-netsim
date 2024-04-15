@@ -7,7 +7,7 @@ use crate::{
 };
 use anyhow::{bail, ensure};
 use logos::{Lexer, Logos};
-use std::{cmp::min, collections::HashMap, fmt::Display, str::FromStr, time::Duration};
+use std::{collections::HashMap, fmt::Display, str::FromStr, time::Duration};
 
 pub enum PolicyOutcome {
     //TODO(nicolasdp): implement the drop strategy
@@ -21,7 +21,7 @@ pub enum PolicyOutcome {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Bandwidth(
     /// bits per seconds
-    u128,
+    u64,
 );
 
 #[derive(Logos, Debug, PartialEq)]
@@ -65,6 +65,8 @@ pub struct NodePolicy {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct EdgePolicy {
     pub latency: Latency,
+    pub bandwidth_down: Bandwidth,
+    pub bandwidth_up: Bandwidth,
     pub packet_loss: PacketLoss,
 }
 
@@ -79,7 +81,7 @@ pub struct Policy {
 
 impl Bandwidth {
     pub const fn bits_per(bits: u64, duration: Duration) -> Self {
-        Self(bits as u128 * duration.as_millis())
+        Self(bits * duration.as_millis() as u64)
     }
 }
 
@@ -139,6 +141,8 @@ impl Default for EdgePolicy {
     fn default() -> Self {
         Self {
             latency: DEFAULT_LATENCY,
+            bandwidth_down: DEFAULT_DOWNLOAD_BANDWIDTH,
+            bandwidth_up: DEFAULT_UPLOAD_BANDWIDTH,
             packet_loss: DEFAULT_PACKET_LOSS,
         }
     }
@@ -165,7 +169,7 @@ impl EdgePolicy {
 
         Self {
             latency,
-            packet_loss: DEFAULT_PACKET_LOSS,
+            ..Self::default()
         }
     }
 }
@@ -221,26 +225,13 @@ impl Policy {
     {
         let from = msg.from();
         let to = msg.to();
-        let msg_bits = msg.content().bytes_size() * 8;
-
-        let upload_bandwidth = self
-            .get_node_policy(from)
-            .unwrap_or_else(|| self.default_node_policy())
-            .bandwidth_up;
-        let download_bandwidth = self
-            .get_node_policy(to)
-            .unwrap_or_else(|| self.default_node_policy())
-            .bandwidth_down;
-        let bandwidth = min(upload_bandwidth, download_bandwidth);
 
         let edge = Edge::new((from, to));
         let edge_policy = self
             .get_edge_policy(edge)
             .unwrap_or_else(|| self.default_edge_policy());
 
-        let transfer_duration = Duration::from_millis((msg_bits as u128 / bandwidth.0) as u64);
-
-        edge_policy.latency.to_duration() + transfer_duration
+        edge_policy.latency.to_duration()
     }
 
     pub(crate) fn process<T>(&mut self, msg: &Msg<T>) -> PolicyOutcome
@@ -253,9 +244,15 @@ impl Policy {
     }
 }
 
-const K: u128 = 1_024;
-const M: u128 = 1_024 * 1_024;
-const G: u128 = 1_024 * 1_024 * 1_024;
+impl Bandwidth {
+    pub fn into_inner(self) -> u64 {
+        self.0
+    }
+}
+
+const K: u64 = 1_024;
+const M: u64 = 1_024 * 1_024;
+const G: u64 = 1_024 * 1_024 * 1_024;
 
 impl Display for Bandwidth {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -288,7 +285,7 @@ impl FromStr for Bandwidth {
         let Some(Ok(BandwidthToken::Value)) = lex.next() else {
             bail!("Expecting to parse a number")
         };
-        let number: u128 = lex.slice().parse()?;
+        let number: u64 = lex.slice().parse()?;
         let Some(Ok(token)) = lex.next() else {
             bail!("Expecting to parse a unit")
         };

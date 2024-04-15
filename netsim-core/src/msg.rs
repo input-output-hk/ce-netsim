@@ -23,11 +23,6 @@ pub struct Msg<T> {
     content: T,
 }
 
-pub struct MsgWith<T> {
-    pub msg: Msg<T>,
-    pub reception_time: Instant,
-}
-
 impl<T> Msg<T> {
     pub fn new(from: SimId, to: SimId, content: T) -> Self {
         Self {

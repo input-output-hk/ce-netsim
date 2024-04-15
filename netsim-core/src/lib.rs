@@ -1,4 +1,5 @@
 mod bus;
+mod congestion_queue;
 pub mod defaults;
 mod geo;
 mod msg;
@@ -6,7 +7,6 @@ mod policy;
 pub mod sim_context;
 mod sim_id;
 pub mod time;
-mod time_queue;
 
 use std::time::Duration;
 
@@ -14,10 +14,9 @@ use defaults::DEFAULT_IDLE;
 
 pub use self::{
     bus::BusSender,
-    msg::{HasBytesSize, Msg, MsgWith},
+    msg::{HasBytesSize, Msg},
     policy::{Bandwidth, Edge, EdgePolicy, Latency, NodePolicy, PacketLoss, Policy},
     sim_id::SimId,
-    time_queue::TimeQueue,
 };
 
 pub struct OnDrop<T> {

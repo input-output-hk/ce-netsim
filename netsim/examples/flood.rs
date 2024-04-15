@@ -77,6 +77,7 @@ fn main() {
             EdgePolicy {
                 latency: Latency::new(cmd.latency.into_duration()),
                 packet_loss: PacketLoss::NONE,
+                ..Default::default()
             },
         );
 
