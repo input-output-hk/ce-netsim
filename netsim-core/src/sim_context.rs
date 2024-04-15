@@ -83,7 +83,7 @@ where
     pub fn with_config(configuration: SimConfiguration<UpLink::Msg>) -> Self {
         let policy = Arc::new(RwLock::new(configuration.policy));
         let links = Arc::new(Mutex::new(HashMap::new()));
-        let next_sim_id = SimId::ZERO.next(); // Starts at 1
+        let next_sim_id = SimId::ZERO; // Starts at 0
 
         let (sender, receiver) = open_bus();
 
