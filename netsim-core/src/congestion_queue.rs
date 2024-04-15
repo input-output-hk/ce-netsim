@@ -160,7 +160,7 @@ where
             .entry(envelop.msg.from())
             .and_modify(|u| u.refresh(time))
             .or_insert_with(|| Usage::new(time));
-        let s_policy = nodes[envelop.msg.from().0 as usize]
+        let s_policy = nodes[envelop.msg.from().into_index()]
             .policy()
             .unwrap_or_else(|| policy.default_node_policy());
         let remaining_size = message_size - envelop.sender;
@@ -189,7 +189,7 @@ where
             .entry(envelop.msg.to())
             .and_modify(|u| u.refresh(time))
             .or_insert_with(|| Usage::new(time));
-        let r_policy = nodes[envelop.msg.to().0 as usize]
+        let r_policy = nodes[envelop.msg.to().into_index()]
             .policy()
             .unwrap_or_else(|| policy.default_node_policy());
         let remaining_size = envelop.link - envelop.receiver;

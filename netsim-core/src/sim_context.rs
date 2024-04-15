@@ -154,7 +154,7 @@ where
             .links
             .lock()
             .unwrap()
-            .get_mut(node.0 as usize)
+            .get_mut(node.into_index())
             .map(|node| node.policy = Some(policy));
 
         debug_assert!(
@@ -171,7 +171,7 @@ where
             .links
             .lock()
             .unwrap()
-            .get_mut(node.0 as usize)
+            .get_mut(node.into_index())
             .map(|node| node.policy = None);
 
         debug_assert!(
@@ -196,7 +196,7 @@ where
 
         debug_assert_eq!(
             self.links.lock().unwrap().len(),
-            self.next_sim_id.0 as usize,
+            self.next_sim_id.into_index(),
             "The next available SimId is the lenght of the vec"
         );
 
@@ -305,7 +305,7 @@ where
             .lock()
             .map_err(|error| anyhow!("Failed to acquire address, mutex poisonned {error}"))?;
 
-        if let Some(sim_link) = addresses.get_mut(dst.0 as usize) {
+        if let Some(sim_link) = addresses.get_mut(dst.into_index()) {
             let _error = sim_link.link.send(msg);
             Ok(())
         } else {

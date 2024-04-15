@@ -5,7 +5,7 @@ use anyhow::anyhow;
 /// The identifier of a peer in the SimNetwork
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(C)]
-pub struct SimId(pub(crate) u64);
+pub struct SimId(u64);
 
 impl SimId {
     pub(crate) const ZERO: Self = SimId::new(0);
@@ -17,6 +17,12 @@ impl SimId {
     #[must_use = "function does not modify the current value"]
     pub(crate) fn next(self) -> Self {
         Self::new(self.0 + 1)
+    }
+
+    /// we use the `SimId` as index of the array of links
+    #[inline(always)]
+    pub(crate) fn into_index(self) -> usize {
+        self.0 as usize
     }
 }
 
