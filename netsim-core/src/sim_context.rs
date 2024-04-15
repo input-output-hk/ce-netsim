@@ -14,12 +14,17 @@ use std::{
 /// the collections of up links to other sockets
 ///
 /// This is parameterised so that we can set async or non async channel
-type Links<UpLink> = Arc<Mutex<Vec<UpLink>>>;
+pub(crate) type SimLinks<UpLink> = Vec<SimLink<UpLink>>;
 
 pub trait Link {
     type Msg: HasBytesSize;
 
     fn send(&self, msg: Msg<Self::Msg>) -> Result<()>;
+}
+
+pub(crate) struct SimLink<UpLink> {
+    link: UpLink,
+    policy: Option<NodePolicy>,
 }
 
 /// This is the execution context/controller of a simulated network
@@ -35,7 +40,7 @@ pub struct SimContextCore<UpLink: Link> {
 
     bus: BusSender<UpLink::Msg>,
 
-    links: Links<UpLink>,
+    links: Arc<Mutex<SimLinks<UpLink>>>,
 
     mux_handler: thread::JoinHandle<Result<()>>,
 }
@@ -49,9 +54,19 @@ pub struct SimMuxCore<UpLink: Link> {
 
     bus: BusReceiver<UpLink::Msg>,
 
-    links: Links<UpLink>,
+    links: Arc<Mutex<SimLinks<UpLink>>>,
 
     msgs: CongestionQueue<UpLink::Msg>,
+}
+
+impl<UpLink> SimLink<UpLink> {
+    pub(crate) fn new(link: UpLink) -> Self {
+        Self { link, policy: None }
+    }
+
+    pub(crate) fn policy(&self) -> Option<NodePolicy> {
+        self.policy
+    }
 }
 
 impl<UpLink> SimContextCore<UpLink>
@@ -109,10 +124,6 @@ where
         &self.policy
     }
 
-    pub fn links(&self) -> &Links<UpLink> {
-        &self.links
-    }
-
     /// set a specific policy between the two `Node` that compose the [`Edge`].
     ///
     /// when no specific policies are set, the default policies are used.
@@ -139,14 +150,34 @@ where
     /// so that the default policy will be used onward.
     ///
     pub fn set_node_policy(&mut self, node: SimId, policy: NodePolicy) {
-        self.policy.write().unwrap().set_node_policy(node, policy)
+        let _not_found = self
+            .links
+            .lock()
+            .unwrap()
+            .get_mut(node.0 as usize)
+            .map(|node| node.policy = Some(policy));
+
+        debug_assert!(
+            _not_found.is_some(),
+            "we aren't expecting users to create SimId themselves and it should always be valid"
+        )
     }
 
     /// Reset the specific [`NodePolicy`] associated to the given node
     /// ([SimSocket]) so that the default policy will be used again going
     /// forward.
     pub fn reset_node_policy(&mut self, node: SimId) {
-        self.policy.write().unwrap().reset_node_policy(node)
+        let _not_found = self
+            .links
+            .lock()
+            .unwrap()
+            .get_mut(node.0 as usize)
+            .map(|node| node.policy = None);
+
+        debug_assert!(
+            _not_found.is_some(),
+            "we aren't expecting users to create SimId themselves and it should always be valid"
+        )
     }
 
     pub fn bus(&self) -> BusSender<UpLink::Msg> {
@@ -201,7 +232,7 @@ where
         on_drop: Option<OnDrop<UpLink::Msg>>,
         idle_duration: Duration,
         bus: BusReceiver<UpLink::Msg>,
-        links: Links<UpLink>,
+        links: Arc<Mutex<SimLinks<UpLink>>>,
     ) -> Self {
         let msgs = CongestionQueue::new();
         Self {
@@ -216,10 +247,6 @@ where
 
     pub fn configuration(&self) -> &Arc<RwLock<Policy>> {
         &self.policy
-    }
-
-    pub fn links(&self) -> &Links<UpLink> {
-        &self.links
     }
 
     /// process an inbound message
@@ -247,7 +274,11 @@ where
     /// This function may returns an empty `Vec` and this
     /// simply means there are no messages to be forwarded
     pub fn outbound_messages(&mut self, time: Instant) -> Result<Vec<Msg<UpLink::Msg>>> {
-        Ok(self.msgs.pop_many(time, &self.policy.read().unwrap()))
+        Ok(self.msgs.pop_many(
+            time,
+            &self.links.lock().unwrap(),
+            &self.policy.read().unwrap(),
+        ))
     }
 
     /// get the earliest time to the next message
@@ -270,12 +301,12 @@ where
     fn propagate_msg(&mut self, msg: Msg<UpLink::Msg>) -> Result<()> {
         let dst = msg.to();
         let mut addresses = self
-            .links()
+            .links
             .lock()
             .map_err(|error| anyhow!("Failed to acquire address, mutex poisonned {error}"))?;
 
-        if let Some(link) = addresses.get_mut(dst.0 as usize) {
-            let _error = link.send(msg);
+        if let Some(sim_link) = addresses.get_mut(dst.0 as usize) {
+            let _error = sim_link.link.send(msg);
             Ok(())
         } else {
             panic!("We shouldn't have any recipient of messages with an index that is not valid")
