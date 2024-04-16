@@ -334,9 +334,8 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::vec_init_then_push)]
+    #[allow(clippy::vec_init_then_push, non_snake_case)]
     fn congestion_queue_pop() {
-        #[allow(non_snake_case)]
         let ALICE_BOB: Edge = Edge::new((ALICE, BOB));
 
         let mut policy = Policy::new();
