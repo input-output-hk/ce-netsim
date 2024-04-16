@@ -11,7 +11,10 @@ pub use netsim_core::{
     SimId,
 };
 
-pub struct SimSocket<T> {
+pub struct SimSocket<T>
+where
+    T: HasBytesSize,
+{
     reader: SimSocketReadHalf<T>,
     writer: SimSocketWriteHalf<T>,
 }
@@ -21,13 +24,23 @@ pub struct SimSocketReadHalf<T> {
     down: SimDownLink<T>,
 }
 
-pub struct SimSocketWriteHalf<T> {
+pub struct SimSocketWriteHalf<T>
+where
+    T: HasBytesSize,
+{
     id: SimId,
-    up: BusSender<T>,
+    up: BusSender<SimUpLink<T>>,
 }
 
-impl<T> SimSocket<T> {
-    pub(crate) fn new(id: SimId, to_bus: BusSender<T>, receiver: SimDownLink<T>) -> Self {
+impl<T> SimSocket<T>
+where
+    T: HasBytesSize,
+{
+    pub(crate) fn new(
+        id: SimId,
+        to_bus: BusSender<SimUpLink<T>>,
+        receiver: SimDownLink<T>,
+    ) -> Self {
         let reader = SimSocketReadHalf { id, down: receiver };
         let writer = SimSocketWriteHalf { id, up: to_bus };
 
@@ -57,7 +70,10 @@ where
     }
 }
 
-impl<T> SimSocketWriteHalf<T> {
+impl<T> SimSocketWriteHalf<T>
+where
+    T: HasBytesSize,
+{
     pub fn id(&self) -> SimId {
         self.id
     }

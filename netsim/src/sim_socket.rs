@@ -1,9 +1,15 @@
-use crate::{sim_link::SimDownLink, HasBytesSize, SimId};
+use crate::{
+    sim_link::{SimDownLink, SimUpLink},
+    HasBytesSize, SimId,
+};
 use anyhow::Result;
 use netsim_core::{BusSender, Msg};
 use std::sync::mpsc;
 
-pub struct SimSocket<T> {
+pub struct SimSocket<T>
+where
+    T: HasBytesSize,
+{
     reader: SimSocketReadHalf<T>,
     writer: SimSocketWriteHalf<T>,
 }
@@ -13,9 +19,12 @@ pub struct SimSocketReadHalf<T> {
     down: SimDownLink<T>,
 }
 
-pub struct SimSocketWriteHalf<T> {
+pub struct SimSocketWriteHalf<T>
+where
+    T: HasBytesSize,
+{
     id: SimId,
-    up: BusSender<T>,
+    up: BusSender<SimUpLink<T>>,
 }
 
 /// Result from [`SimSocket::try_recv`] or [`SimSocketReadHalf::try_recv`]
@@ -31,8 +40,15 @@ pub enum TryRecv<T> {
     Disconnected,
 }
 
-impl<T> SimSocket<T> {
-    pub(crate) fn new(id: SimId, to_bus: BusSender<T>, receiver: SimDownLink<T>) -> Self {
+impl<T> SimSocket<T>
+where
+    T: HasBytesSize,
+{
+    pub(crate) fn new(
+        id: SimId,
+        to_bus: BusSender<SimUpLink<T>>,
+        receiver: SimDownLink<T>,
+    ) -> Self {
         Self {
             reader: SimSocketReadHalf { id, down: receiver },
             writer: SimSocketWriteHalf { id, up: to_bus },
@@ -73,7 +89,7 @@ where
     }
 }
 
-impl<T> SimSocketWriteHalf<T> {
+impl<T: HasBytesSize> SimSocketWriteHalf<T> {
     #[inline]
     pub fn id(&self) -> SimId {
         self.id

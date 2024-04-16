@@ -79,6 +79,8 @@ pub struct Policy {
 }
 
 impl Bandwidth {
+    pub const MAX: Self = Self(u64::MAX);
+
     pub const fn bits_per(bits: u64, duration: Duration) -> Self {
         Self(bits * duration.as_millis() as u64)
     }
