@@ -1,7 +1,6 @@
 use clap::Parser;
 use netsim_async::{HasBytesSize, SimConfiguration, SimId, SimSocket};
-use netsim_core::{Bandwidth, Edge, EdgePolicy, Latency, NodePolicy, PacketLoss};
-use std::time::Duration;
+use netsim_core::{time::Duration, Bandwidth, Edge, EdgePolicy, Latency, NodePolicy, PacketLoss};
 use tokio::time::{sleep, Instant};
 
 type SimContext = netsim_async::SimContext<Msg>;
@@ -9,19 +8,25 @@ type SimContext = netsim_async::SimContext<Msg>;
 #[derive(Parser)]
 struct Command {
     #[arg(long, default_value = "60")]
-    time: u64,
+    time: Duration,
 
     #[arg(long, default_value = "10")]
-    every: u64,
+    every: Duration,
+
+    #[arg(long, default_value = "10")]
+    idle: Duration,
 }
 
-const LATENCY: Duration = Duration::from_millis(60);
+const LATENCY: std::time::Duration = std::time::Duration::from_millis(60);
 
 #[tokio::main]
 async fn main() {
     let cmd = Command::parse();
 
-    let configuration = SimConfiguration::default();
+    let configuration = SimConfiguration {
+        idle_duration: cmd.idle.into_duration(),
+        ..SimConfiguration::default()
+    };
 
     let mut context: SimContext = SimContext::with_config(configuration);
 
@@ -31,38 +36,44 @@ async fn main() {
     let tap = Tap {
         socket: context.open().unwrap(),
         sink_id: sink.socket.id(),
-        every: Duration::from_millis(cmd.every),
+        every: cmd.every,
     };
 
-    context.set_node_policy(
-        sink.socket.id(),
-        NodePolicy {
-            bandwidth_down: Bandwidth::bits_per(u64::MAX, Duration::from_secs(1)),
-            bandwidth_up: Bandwidth::bits_per(u64::MAX, Duration::from_secs(1)),
-            location: None,
-        },
-    );
-    context.set_node_policy(
-        tap.socket.id(),
-        NodePolicy {
-            bandwidth_down: Bandwidth::bits_per(u64::MAX, Duration::from_secs(1)),
-            bandwidth_up: Bandwidth::bits_per(u64::MAX, Duration::from_secs(1)),
-            location: None,
-        },
-    );
-    context.set_edge_policy(
-        Edge::new((tap.socket.id(), sink.socket.id())),
-        EdgePolicy {
-            latency: Latency::new(LATENCY),
-            packet_loss: PacketLoss::NONE,
-            ..Default::default()
-        },
-    );
+    context
+        .set_node_policy(
+            sink.socket.id(),
+            NodePolicy {
+                bandwidth_down: Bandwidth::MAX,
+                bandwidth_up: Bandwidth::MAX,
+                location: None,
+            },
+        )
+        .unwrap();
+    context
+        .set_node_policy(
+            tap.socket.id(),
+            NodePolicy {
+                bandwidth_down: Bandwidth::MAX,
+                bandwidth_up: Bandwidth::MAX,
+                location: None,
+            },
+        )
+        .unwrap();
+    context
+        .set_edge_policy(
+            Edge::new((tap.socket.id(), sink.socket.id())),
+            EdgePolicy {
+                latency: Latency::new(LATENCY),
+                packet_loss: PacketLoss::NONE,
+                ..Default::default()
+            },
+        )
+        .unwrap();
 
     let sink = tokio::spawn(sink.work());
     let tap = tokio::spawn(tap.work());
 
-    sleep(Duration::from_secs(cmd.time)).await;
+    sleep(cmd.time.into_duration()).await;
 
     context.shutdown().unwrap();
     sink.await.unwrap();
@@ -90,7 +101,7 @@ impl Sink {
         }
 
         let len = delays.len();
-        let total = delays.iter().copied().sum::<Duration>();
+        let total = delays.iter().copied().sum::<std::time::Duration>();
         let avg = total / delays.len() as u32;
 
         println!("sent {len} messages over. Msg received with an average of {avg:?} delays to the expected LATENCY");
@@ -117,7 +128,7 @@ impl Tap {
     async fn work(mut self) {
         while self.send_msg() {
             let now = Instant::now();
-            sleep(self.every).await;
+            sleep(self.every.into_duration()).await;
             let elapsed = now.elapsed();
 
             println!("{elapsed:?}");

@@ -47,14 +47,16 @@ fn main() {
         socket: context.open().unwrap(),
         latency: cmd.latency,
     };
-    context.set_node_policy(
-        sink.socket.id(),
-        NodePolicy {
-            bandwidth_down: cmd.bandwidth_down,
-            bandwidth_up: cmd.bandwidth_up,
-            location: None,
-        },
-    );
+    context
+        .set_node_policy(
+            sink.socket.id(),
+            NodePolicy {
+                bandwidth_down: cmd.bandwidth_down,
+                bandwidth_up: cmd.bandwidth_up,
+                location: None,
+            },
+        )
+        .unwrap();
 
     let mut taps = Vec::with_capacity(cmd.num_tap);
     for _ in 0..cmd.num_tap {
@@ -64,22 +66,26 @@ fn main() {
             every: cmd.every,
         };
 
-        context.set_node_policy(
-            tap.socket.id(),
-            NodePolicy {
-                bandwidth_down: cmd.bandwidth_down,
-                bandwidth_up: cmd.bandwidth_up,
-                location: None,
-            },
-        );
-        context.set_edge_policy(
-            Edge::new((tap.socket.id(), sink.socket.id())),
-            EdgePolicy {
-                latency: Latency::new(cmd.latency.into_duration()),
-                packet_loss: PacketLoss::NONE,
-                ..Default::default()
-            },
-        );
+        context
+            .set_node_policy(
+                tap.socket.id(),
+                NodePolicy {
+                    bandwidth_down: cmd.bandwidth_down,
+                    bandwidth_up: cmd.bandwidth_up,
+                    location: None,
+                },
+            )
+            .unwrap();
+        context
+            .set_edge_policy(
+                Edge::new((tap.socket.id(), sink.socket.id())),
+                EdgePolicy {
+                    latency: Latency::new(cmd.latency.into_duration()),
+                    packet_loss: PacketLoss::NONE,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
 
         taps.push(tap);
     }

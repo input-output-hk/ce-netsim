@@ -42,19 +42,19 @@ where
         self.core.shutdown()
     }
 
-    pub fn set_node_policy(&mut self, node: SimId, policy: NodePolicy) {
+    pub fn set_node_policy(&mut self, node: SimId, policy: NodePolicy) -> Result<()> {
         self.core.set_node_policy(node, policy)
     }
 
-    pub fn set_edge_policy(&mut self, edge: Edge, policy: EdgePolicy) {
+    pub fn set_edge_policy(&mut self, edge: Edge, policy: EdgePolicy) -> Result<()> {
         self.core.set_edge_policy(edge, policy)
     }
 
-    pub fn reset_node_policy(&mut self, node: SimId) {
+    pub fn reset_node_policy(&mut self, node: SimId) -> Result<()> {
         self.core.reset_node_policy(node)
     }
 
-    pub fn reset_edge_policy(&mut self, edge: Edge) {
+    pub fn reset_edge_policy(&mut self, edge: Edge) -> Result<()> {
         self.core.reset_edge_policy(edge)
     }
 }

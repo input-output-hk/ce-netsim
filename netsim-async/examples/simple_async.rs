@@ -12,13 +12,15 @@ async fn main() {
     let net1 = context.open().unwrap();
     let mut net2 = context.open().unwrap();
 
-    context.set_edge_policy(
-        Edge::new((net1.id(), net2.id())),
-        EdgePolicy {
-            latency: Latency::new(Duration::from_secs(1)),
-            ..Default::default()
-        },
-    );
+    context
+        .set_edge_policy(
+            Edge::new((net1.id(), net2.id())),
+            EdgePolicy {
+                latency: Latency::new(Duration::from_secs(1)),
+                ..Default::default()
+            },
+        )
+        .unwrap();
 
     net1.send_to(net2.id(), MSG).unwrap();
 
