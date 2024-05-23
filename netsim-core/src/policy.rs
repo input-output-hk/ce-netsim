@@ -266,6 +266,15 @@ impl Display for Bandwidth {
     }
 }
 
+impl FromStr for Latency {
+    type Err = anyhow::Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let duration = crate::time::Duration::from_str(s)?;
+
+        Ok(Self(duration.into_duration()))
+    }
+}
+
 impl FromStr for Bandwidth {
     type Err = anyhow::Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
