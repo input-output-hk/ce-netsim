@@ -92,7 +92,7 @@ impl Latency {
         Self(duration)
     }
 
-    pub(crate) fn to_duration(self) -> Duration {
+    pub fn to_duration(self) -> Duration {
         self.0
     }
 }
