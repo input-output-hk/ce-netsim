@@ -9,3 +9,6 @@ license = "Apache-2.0"
 [dependencies]
 anyhow = "1.0.79"
 logos = "0.14.0"
+
+[features]
+thread_sleep_until = []
