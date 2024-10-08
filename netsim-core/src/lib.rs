@@ -1,7 +1,7 @@
 mod bus;
 mod congestion_queue;
 pub mod defaults;
-mod geo;
+pub mod geo;
 mod msg;
 mod policy;
 pub mod sim_context;
