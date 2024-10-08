@@ -7,8 +7,8 @@ use anyhow::Result;
 use netsim_core::BusSender;
 pub(crate) use netsim_core::Msg;
 pub use netsim_core::{
-    Bandwidth, Edge, EdgePolicy, HasBytesSize, Latency, NodePolicy, PacketLoss, SimConfiguration,
-    SimId,
+    geo, Bandwidth, Edge, EdgePolicy, HasBytesSize, Latency, NodePolicy, PacketLoss,
+    SimConfiguration, SimId,
 };
 
 pub struct SimSocket<T>

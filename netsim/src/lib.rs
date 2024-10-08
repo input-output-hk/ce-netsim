@@ -15,6 +15,6 @@ pub use crate::{
     sim_socket::{SimSocket, SimSocketReadHalf, SimSocketWriteHalf, TryRecv},
 };
 pub use netsim_core::{
-    Bandwidth, Edge, EdgePolicy, HasBytesSize, Latency, NodePolicy, PacketLoss, SimConfiguration,
-    SimId,
+    geo, Bandwidth, Edge, EdgePolicy, HasBytesSize, Latency, NodePolicy, PacketLoss,
+    SimConfiguration, SimId,
 };
