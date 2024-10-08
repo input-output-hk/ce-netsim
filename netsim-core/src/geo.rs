@@ -37,7 +37,6 @@ pub struct Spheroid {
 }
 
 impl Spheroid {
-    #[allow(unused)]
     pub fn new(alpha: f64, beta: f64, inv_flattening: f64) -> Self {
         Self {
             alpha,
