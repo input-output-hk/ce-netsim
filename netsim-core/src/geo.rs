@@ -173,13 +173,7 @@ pub fn latency_between_locations(p1: Location, p2: Location, sol_fo: f64) -> Opt
     const SPEED_OF_LIGHT: f64 = 299_792_458.0; // meter per second
     const SPEED_OF_FIBER: f64 = SPEED_OF_LIGHT * 0.69; // light travels 31% slower in fiber optics
 
-    let sol_fo = if sol_fo < 0.01 {
-        0.01
-    } else if sol_fo > 1.0 {
-        1.0
-    } else {
-        sol_fo
-    };
+    let sol_fo = sol_fo.clamp(0.01, 1.0);
 
     let distance = distance_between(p1, p2);
     distance.map(|d| {
