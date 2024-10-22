@@ -204,7 +204,7 @@ where
         debug_assert!(envelop.link >= envelop.receiver);
 
         if message_size == envelop.receiver {
-            let entry = self.queue.remove(index)?.msg;
+            let entry = self.queue.swap_remove_back(index)?.msg;
             Some(entry)
         } else {
             None
