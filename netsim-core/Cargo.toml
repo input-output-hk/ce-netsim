@@ -4,11 +4,23 @@ version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-anyhow = "1.0.79"
-logos = "0.14.0"
+anyhow = "1.0"
+logos = "0.14"
+thiserror = "2.0"
 
-[features]
-thread_sleep_until = []
+[dev-dependencies]
+criterion = { version = "0.4", features = ["html_reports"] }
+indicatif = "0.17"
+
+[[bench]]
+name = "gauge"
+harness = false
+
+[[bench]]
+name = "vincenty"
+harness = false
+
+[[bench]]
+name = "network"
+harness = false

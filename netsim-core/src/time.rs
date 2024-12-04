@@ -4,11 +4,12 @@ use logos::{Lexer, Logos};
 use std::{str::FromStr, time};
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct Duration(std::time::Duration);
+pub(crate) struct Duration(std::time::Duration);
 
 impl Duration {
-    /// a duration of zero seconds
-    pub const ZERO: Self = Self(std::time::Duration::ZERO);
+    pub(crate) fn new(dur: std::time::Duration) -> Self {
+        Self(dur)
+    }
 
     #[inline]
     pub fn into_duration(self) -> time::Duration {

@@ -1,6 +1,6 @@
 use clap::Parser;
-use netsim_async::{HasBytesSize, SimConfiguration, SimId, SimSocket};
-use netsim_core::{time::Duration, Bandwidth, Edge, EdgePolicy, Latency, NodePolicy, PacketLoss};
+use netsim_async::{HasBytesSize, SimConfiguration, NodeId, SimSocket};
+use netsim_core::{time::Duration, Bandwidth, LinkId, EdgePolicy, Latency, NodePolicy, PacketLoss};
 use tokio::time::{sleep, Instant};
 
 type SimContext = netsim_async::SimContext<Msg>;
@@ -61,7 +61,7 @@ async fn main() {
         .unwrap();
     context
         .set_edge_policy(
-            Edge::new((tap.socket.id(), sink.socket.id())),
+            LinkId::new((tap.socket.id(), sink.socket.id())),
             EdgePolicy {
                 latency: Latency::new(LATENCY),
                 packet_loss: PacketLoss::NONE,
@@ -115,7 +115,7 @@ impl Sink {
 
 struct Tap {
     socket: SimSocket<Msg>,
-    sink_id: SimId,
+    sink_id: NodeId,
     every: Duration,
 }
 

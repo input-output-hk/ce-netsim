@@ -1,7 +1,7 @@
 use crate::{link, HasBytesSize, SimSocket, SimUpLink};
 use anyhow::{Context as _, Result};
 use netsim_core::sim_context::SimContextCore;
-pub use netsim_core::{Edge, EdgePolicy, NodePolicy, SimConfiguration, SimId};
+pub use netsim_core::{LinkId, EdgePolicy, NodePolicy, SimConfiguration, NodeId};
 
 /// the context to keep on in order to continue adding/removing/monitoring nodes
 /// in the sim-ed network.
@@ -42,19 +42,19 @@ where
         self.core.shutdown()
     }
 
-    pub fn set_node_policy(&mut self, node: SimId, policy: NodePolicy) -> Result<()> {
+    pub fn set_node_policy(&mut self, node: NodeId, policy: NodePolicy) -> Result<()> {
         self.core.set_node_policy(node, policy)
     }
 
-    pub fn set_edge_policy(&mut self, edge: Edge, policy: EdgePolicy) -> Result<()> {
+    pub fn set_edge_policy(&mut self, edge: LinkId, policy: EdgePolicy) -> Result<()> {
         self.core.set_edge_policy(edge, policy)
     }
 
-    pub fn reset_node_policy(&mut self, node: SimId) -> Result<()> {
+    pub fn reset_node_policy(&mut self, node: NodeId) -> Result<()> {
         self.core.reset_node_policy(node)
     }
 
-    pub fn reset_edge_policy(&mut self, edge: Edge) -> Result<()> {
+    pub fn reset_edge_policy(&mut self, edge: LinkId) -> Result<()> {
         self.core.reset_edge_policy(edge)
     }
 }
