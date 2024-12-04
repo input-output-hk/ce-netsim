@@ -1,4 +1,4 @@
-use netsim_async::{Edge, EdgePolicy, Latency, SimConfiguration, SimContext};
+use netsim_async::{LinkId, EdgePolicy, Latency, SimConfiguration, SimContext};
 use std::time::Duration;
 use tokio::time::Instant;
 
@@ -14,7 +14,7 @@ async fn main() {
 
     context
         .set_edge_policy(
-            Edge::new((net1.id(), net2.id())),
+            LinkId::new((net1.id(), net2.id())),
             EdgePolicy {
                 latency: Latency::new(Duration::from_secs(1)),
                 ..Default::default()

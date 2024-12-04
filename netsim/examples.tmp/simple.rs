@@ -1,5 +1,5 @@
 use netsim::SimContext;
-use netsim_core::{Edge, EdgePolicy, Latency};
+use netsim_core::{LinkId, EdgePolicy, Latency};
 use std::time::{Duration, Instant};
 
 const MSG: &str = "Hello World!";
@@ -12,7 +12,7 @@ fn main() {
 
     context
         .set_edge_policy(
-            Edge::new((net1.id(), net2.id())),
+            LinkId::new((net1.id(), net2.id())),
             EdgePolicy {
                 latency: Latency::new(Duration::from_secs(1)),
                 ..Default::default()

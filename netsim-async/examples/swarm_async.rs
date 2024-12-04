@@ -1,5 +1,5 @@
 use clap::Parser;
-use netsim_async::{HasBytesSize, SimConfiguration, SimId, SimSocketReadHalf, SimSocketWriteHalf};
+use netsim_async::{HasBytesSize, SimConfiguration, NodeId, SimSocketReadHalf, SimSocketWriteHalf};
 use rand::{thread_rng, RngCore as _};
 use std::{sync::Arc, time::Duration};
 use tokio::{
@@ -10,7 +10,7 @@ use tokio::{
 
 type SimContext = netsim_async::SimContext<Msg>;
 
-type BeeIds = Arc<RwLock<Vec<SimId>>>;
+type BeeIds = Arc<RwLock<Vec<NodeId>>>;
 
 #[derive(Parser)]
 struct Command {
@@ -61,7 +61,7 @@ impl BusyBee {
         sleep(Duration::from_millis(millis))
     }
 
-    async fn sample_id(&mut self) -> SimId {
+    async fn sample_id(&mut self) -> NodeId {
         let ids = self.bee_ids.read().await;
         let len = ids.len();
         let mut rng = thread_rng();
@@ -83,7 +83,7 @@ impl BusyBee {
         self.writer.send_to(to, msg).unwrap()
     }
 
-    async fn handle_inbound(&mut self, _from: SimId, msg: Msg) {
+    async fn handle_inbound(&mut self, _from: NodeId, msg: Msg) {
         let _id = self.reader.id();
         let _size = msg.size;
         let _elapsed = msg.time.elapsed().as_millis();

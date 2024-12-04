@@ -1,7 +1,13 @@
-use crate::Latency;
+use crate::measure::Latency;
 
 /// Location using Latitude and Longitude
+///
+/// given with 4 decimal precision.
+///
+/// For example `(48_8534, 2_3487)` is somewhere in Paris.
 pub type Location = (i64, u64);
+
+//48.85342177234904, 2.348795032744685
 
 fn location_to_radian((latitude, longitude): (i64, u64)) -> (f64, f64) {
     // latitude is between 90 South and 90 North with a precision of 4 digits
@@ -27,7 +33,7 @@ fn distance_between(point1: Location, point2: Location) -> Option<f64> {
 /// using WGS-84 geocentric datum parameters
 ///
 /// It should hold that beta = (1.0 - inv_flattening) * alpha;
-pub struct Spheroid {
+struct Spheroid {
     /// Semi Major Axis in meter / Radius at equator
     alpha: f64,
     /// Semi Minor axis in meter / Radius at pole
@@ -37,7 +43,7 @@ pub struct Spheroid {
 }
 
 impl Spheroid {
-    pub fn new(alpha: f64, beta: f64, inv_flattening: f64) -> Self {
+    const fn new(alpha: f64, beta: f64, inv_flattening: f64) -> Self {
         Self {
             alpha,
             beta,
@@ -45,12 +51,12 @@ impl Spheroid {
         }
     }
 
-    pub const fn earth() -> Self {
-        Self {
-            alpha: 6378137.0,
-            beta: 6356752.314245,
-            inv_flattening: 0.00335281066, // 1.0 / 298.257223563,
-        }
+    const fn earth() -> Self {
+        Self::new(
+            6378137.0,
+            6356752.314245,
+            0.00335281066, // 1.0 / 298.257223563,
+        )
     }
 }
 
@@ -59,8 +65,8 @@ impl Spheroid {
 ///
 /// [Wikipedia Vincenty formulae](https://en.wikipedia.org/wiki/Vincenty%27s_formulae)
 #[derive(Clone, Debug)]
-pub struct VincentyInverse {
-    pub nb_iter: usize,
+struct VincentyInverse {
+    nb_iter: usize,
 }
 
 impl Default for VincentyInverse {
@@ -69,7 +75,7 @@ impl Default for VincentyInverse {
     }
 }
 
-pub trait SpheroidDistanceAlgorithm {
+trait SpheroidDistanceAlgorithm {
     /// Try to calculate the distance between two points on a spheroid, using a formula.
     ///
     /// Algorithm can fails to compute, and may return None

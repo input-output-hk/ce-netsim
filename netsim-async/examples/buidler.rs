@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use clap::Parser;
-use netsim_async::{HasBytesSize, SimConfiguration, SimId, SimSocket};
+use netsim_async::{HasBytesSize, SimConfiguration, NodeId, SimSocket};
 use netsim_core::{time::Duration, Bandwidth, EdgePolicy, Latency, NodePolicy};
 use tokio::{
     select,
@@ -13,7 +13,7 @@ use tokio::{
 struct Key(usize);
 
 struct Network {
-    topology: Arc<Vec<SimId>>,
+    topology: Arc<Vec<NodeId>>,
     socket: SimSocket<Block>,
 }
 

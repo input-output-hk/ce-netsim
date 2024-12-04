@@ -3,7 +3,7 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-pub use netsim::SimId;
+pub use netsim::NodeId;
 use netsim::{HasBytesSize, SimContext as OSimContext, SimSocket as OSimSocket};
 
 #[repr(C)]
@@ -144,7 +144,7 @@ pub unsafe extern "C" fn netsim_context_open(
 /// the function may have unexpected behaviour.
 ///
 #[no_mangle]
-pub unsafe extern "C" fn netsim_socket_id(socket: *mut SimSocket, id: *mut SimId) -> SimError {
+pub unsafe extern "C" fn netsim_socket_id(socket: *mut SimSocket, id: *mut NodeId) -> SimError {
     let Some(socket) = socket.as_ref() else {
         return SimError::NullPointerArgument;
     };
@@ -192,7 +192,7 @@ pub unsafe extern "C" fn netsim_socket_recv(
     // pre-allocated byte array
     msg: *mut Message,
     // where we will put the sender ID
-    from: *mut SimId,
+    from: *mut NodeId,
 ) -> SimError {
     let Some(socket) = socket.as_mut() else {
         return SimError::NullPointerArgument;
@@ -229,7 +229,7 @@ pub unsafe extern "C" fn netsim_socket_recv(
 pub unsafe extern "C" fn netsim_socket_send_to(
     socket: *mut SimSocket,
     // where we will put the sender ID
-    to: SimId,
+    to: NodeId,
     // pre-allocated byte array
     msg: Message,
 ) -> SimError {

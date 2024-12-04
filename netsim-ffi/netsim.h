@@ -105,7 +105,7 @@ SimError netsim_context_shutdown(struct SimContext *context);
  * the function may have unexpected behaviour.
  *
  */
-SimError netsim_socket_id(struct SimSocket *socket, SimId *id);
+SimError netsim_socket_id(struct SimSocket *socket, NodeId *id);
 
 /**
  * Receive a message from the [`SimSocket`]
@@ -122,7 +122,7 @@ SimError netsim_socket_id(struct SimSocket *socket, SimId *id);
  */
 SimError netsim_socket_recv(struct SimSocket *socket,
                             struct Message *msg,
-                            SimId *from);
+                            NodeId *from);
 
 /**
  * Release the new [`SimSocket`] resources
@@ -148,7 +148,7 @@ SimError netsim_socket_release(struct SimSocket *socket);
  *
  */
 SimError netsim_socket_send_to(struct SimSocket *socket,
-                               SimId to,
+                               NodeId to,
                                struct Message msg);
 
 #endif /* NETSIM_LIBC */
