@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use criterion::{
     black_box, criterion_group, criterion_main, measurement::WallTime, BenchmarkGroup, Criterion,
     Throughput,
@@ -9,6 +7,7 @@ use netsim_core::{
     measure::Bandwidth,
     network::{Network, PacketBuilder},
 };
+use std::time::Duration;
 
 const MESSAGE_SIZE: u64 = 100_000_000;
 const BANDWIDTH: Bandwidth = Bandwidth::new(10 * 1_024, Duration::from_secs(1));
