@@ -76,4 +76,15 @@ mod tests {
             LinkId::new((n2, n1)),
         );
     }
+
+    #[test]
+    fn n2n1_into_node_eq_n1n2() {
+        let n1 = NodeId::ZERO;
+        let n2 = NodeId::ONE;
+
+        let link = (n2, n1);
+        let inv = (n1, n2);
+
+        assert_eq!(inv, LinkId::new(link).into_nodes());
+    }
 }
