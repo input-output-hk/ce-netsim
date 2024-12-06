@@ -19,6 +19,10 @@ impl Duration {
 
 impl fmt::Display for Duration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.0.is_zero() {
+            return write!(f, "0ms");
+        }
+
         let subsec_nanos = self.0.subsec_nanos();
         let seconds = self.0.as_secs();
 
@@ -128,6 +132,8 @@ mod tests {
 
     #[test]
     fn display() {
+        assert_eq!(Duration::new(std::time::Duration::ZERO).to_string(), "0ms");
+
         assert_eq!(
             Duration::new(std::time::Duration::from_secs(5 * 60)).to_string(),
             "5m"
