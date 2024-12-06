@@ -123,6 +123,9 @@ mod tests {
 
     #[test]
     fn parse() {
+        let Duration(duration) = "0ms".parse().unwrap();
+        assert_eq!(duration.as_millis(), 0);
+
         let Duration(duration) = "123ms".parse().unwrap();
         assert_eq!(duration.as_millis(), 123);
 
