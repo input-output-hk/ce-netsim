@@ -187,3 +187,35 @@ pub fn latency_between_locations(p1: Location, p2: Location, sol_fo: f64) -> Opt
         ))
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    //48.853415254543435, 2.3487911014845038
+    const P1: Location = (48_8534, 2_3487);
+    // -49.35231574277824, 70.2150600748867
+    const P2: Location = (-49_3523, 70_2150);
+    const SOL_FO: f64 = 0.5;
+
+    #[test]
+    fn latency_between() {
+        let latency = latency_between_locations(P1, P2, SOL_FO).unwrap();
+
+        assert_eq!(latency.to_string(), "122ms");
+    }
+
+    #[test]
+    fn latency_between_self() {
+        let latency = latency_between_locations(P1, P1, SOL_FO).unwrap();
+
+        assert_eq!(latency.to_string(), "0ms");
+    }
+
+    #[test]
+    fn latency_between_no_enough_iter() {
+        let v = VincentyInverse { nb_iter: 0 };
+
+        assert!(v.calculate(P1, P2, Spheroid::earth()).is_none());
+    }
+}
