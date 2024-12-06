@@ -3,7 +3,7 @@ use core::fmt;
 use logos::{Lexer, Logos};
 use std::{str::FromStr, time};
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub(crate) struct Duration(std::time::Duration);
 
 impl Duration {
@@ -19,7 +19,32 @@ impl Duration {
 
 impl fmt::Display for Duration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        <time::Duration as fmt::Debug>::fmt(&self.0, f)
+        let subsec_nanos = self.0.subsec_nanos();
+        let seconds = self.0.as_secs();
+
+        let nanos = subsec_nanos % 1_000;
+        let micros = (subsec_nanos / 1_000) % 1_000;
+        let millis = (subsec_nanos / 1_000_000) % 1_000;
+        let secs = seconds % 60;
+        let minutes = seconds / 60;
+
+        if minutes > 0 {
+            write!(f, "{minutes}m")?;
+        }
+        if secs > 0 {
+            write!(f, "{secs}s")?;
+        }
+        if millis > 0 {
+            write!(f, "{millis}ms")?;
+        }
+        if micros > 0 {
+            write!(f, "{micros}µs")?;
+        }
+        if nanos > 0 {
+            write!(f, "{nanos}ns")?;
+        }
+
+        Ok(())
     }
 }
 
@@ -62,7 +87,7 @@ impl FromStr for Duration {
 enum Token {
     #[token("ns")]
     NanoSeconds,
-    #[regex("us|μs")]
+    #[regex("us|μs|µs")]
     MicroSeconds,
     #[token("ms")]
     MilliSeconds,
@@ -99,5 +124,57 @@ mod tests {
 
         let Duration(duration) = "1s 2000ms 3000000us".parse().unwrap();
         assert_eq!(duration.as_secs(), 6);
+    }
+
+    #[test]
+    fn display() {
+        assert_eq!(
+            Duration::new(std::time::Duration::from_secs(5 * 60)).to_string(),
+            "5m"
+        );
+        assert_eq!(
+            Duration::new(std::time::Duration::from_secs(5)).to_string(),
+            "5s"
+        );
+        assert_eq!(
+            Duration::new(std::time::Duration::from_millis(5)).to_string(),
+            "5ms"
+        );
+        assert_eq!(
+            Duration::new(std::time::Duration::from_micros(5)).to_string(),
+            "5µs"
+        );
+        assert_eq!(
+            Duration::new(std::time::Duration::from_nanos(5)).to_string(),
+            "5ns"
+        );
+
+        assert_eq!(
+            Duration::new(
+                std::time::Duration::from_secs(5 * 60)
+                    + std::time::Duration::from_secs(42)
+                    + std::time::Duration::from_millis(999)
+                    + std::time::Duration::from_micros(123)
+                    + std::time::Duration::from_nanos(1)
+            )
+            .to_string(),
+            "5m42s999ms123µs1ns"
+        );
+    }
+
+    /// test that what is displayed can be parsed too
+    #[test]
+    fn display_parse() {
+        let duration = Duration::new(
+            std::time::Duration::from_secs(120)
+                + std::time::Duration::from_secs(1)
+                + std::time::Duration::from_millis(42)
+                + std::time::Duration::from_nanos(999),
+        );
+
+        let displayed = duration.to_string();
+        let parsed: Duration = displayed.parse().unwrap();
+
+        assert_eq!(parsed, duration);
     }
 }

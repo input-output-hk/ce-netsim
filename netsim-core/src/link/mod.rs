@@ -29,7 +29,7 @@ impl Link {
     pub fn new(latency: Latency, channel: Arc<CongestionChannel>) -> Self {
         Self {
             pending: 0,
-            rem_latency: *latency,
+            rem_latency: latency.into_duration(),
             channel,
             latency,
             round: Round::default(),
