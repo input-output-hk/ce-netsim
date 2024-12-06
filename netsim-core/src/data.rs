@@ -65,3 +65,68 @@ impl Data for String {
         (self.capacity() + std::mem::size_of_val(self)) as u64
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn void() {
+        assert_eq!(().bytes_size(), 0);
+    }
+
+    #[test]
+    fn u8() {
+        assert_eq!(u8::MIN.bytes_size(), 1);
+        assert_eq!(42u8.bytes_size(), 1);
+        assert_eq!(u8::MAX.bytes_size(), 1);
+    }
+
+    #[test]
+    fn box_u8() {
+        assert_eq!(
+            <Box<[u8]> as Data>::bytes_size(&vec![0u8].into_boxed_slice()),
+            1
+        );
+        assert_eq!(
+            <Box<[u8]> as Data>::bytes_size(&vec![0u8; 12].into_boxed_slice()),
+            12
+        );
+    }
+
+    #[test]
+    fn string() {
+        #![allow(clippy::identity_op)]
+
+        const STRING_OVERHEAD: u64 = 24;
+
+        assert_eq!(String::new().bytes_size(), 0 + STRING_OVERHEAD);
+        assert_eq!(
+            "hello world!".to_string().bytes_size(),
+            12 + STRING_OVERHEAD
+        );
+    }
+
+    #[test]
+    fn static_str_() {
+        const STR: &str = "hello world!";
+
+        assert_eq!((&STR).bytes_size(), 12);
+    }
+
+    #[test]
+    fn str_() {
+        assert_eq!("".bytes_size(), 0);
+        assert_eq!("hello world!".bytes_size(), 12);
+    }
+
+    #[test]
+    fn vec() {
+        #![allow(clippy::identity_op)]
+
+        const VEC_OVERHEAD: u64 = 24;
+
+        assert_eq!(vec![].bytes_size(), 0 + VEC_OVERHEAD);
+        assert_eq!(vec![0u8; 12].bytes_size(), 12 + VEC_OVERHEAD);
+    }
+}
