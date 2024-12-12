@@ -225,7 +225,6 @@ where
         // run.
         adjustment = elapsed.saturating_sub(TARGETTED_ELAPSED);
 
-        dbg!(sleep_duration);
         std::thread::sleep(sleep_duration);
 
         instant = Instant::now();

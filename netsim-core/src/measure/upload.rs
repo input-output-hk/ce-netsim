@@ -1,4 +1,4 @@
-use super::{CongestionChannel, Gauge};
+use super::{Bandwidth, CongestionChannel, Gauge};
 use crate::network::Round;
 use std::{sync::Arc, time::Duration};
 
@@ -51,12 +51,42 @@ impl Upload {
         reserved
     }
 
+    /// this is only relevant for the use of the [`Transit`]
+    ///
+    /// Get the number of bytes for the given _route_ for the given data
+    /// that is currently in the upload part of the journey.
+    ///
+    /// [`Transit`]: crate::network::Transit
+    pub(crate) fn bytes_in_buffer(&self) -> u64 {
+        self.in_buffer
+    }
+
+    /// get the maximum capacity of the buffer
     pub fn buffer_max_size(&self) -> u64 {
         self.buffer.maximum_capacity()
     }
 
-    pub fn bytes_in_buffer(&self) -> u64 {
-        self.in_buffer
+    /// get the current buffer size (the current used part of the buffer)
+    ///
+    pub fn buffer_size(&self) -> u64 {
+        self.buffer.used_capacity()
+    }
+
+    /// get the configured bandwidth for this component
+    pub fn channel_bandwidth(&self) -> Bandwidth {
+        self.channel.bandwidth()
+    }
+
+    /// get the remaining bandwidth capacity of the upload channel
+    ///
+    /// If this is `0` this means that the bandwidth was used up and
+    /// there is no more capacity.
+    ///
+    /// If there is more bytes in the buffer than there is remaining
+    /// bandwidth capacity this means that this component of the network
+    /// is becoming a bottleneck.
+    pub fn channel_remaining_bandwidth(&self) -> u64 {
+        self.channel.capacity()
     }
 }
 
