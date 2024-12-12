@@ -23,22 +23,22 @@ where
         download: Download,
         data: Packet<T>,
     ) -> Result<Self, SendError> {
-        if !upload.send(data.bytes_size()) {
-            let buffer_max_size = 0;
-            let buffer_current_size = 0;
+        if upload.send(data.bytes_size()) {
+            Ok(Self {
+                upload,
+                link,
+                download,
+                data,
+            })
+        } else {
+            let buffer_max_size = upload.buffer_max_size();
+            let buffer_current_size = upload.bytes_in_buffer();
 
             Err(SendError::SenderBufferFull {
                 sender: data.from(),
                 buffer_max_size,
                 buffer_current_size,
                 packet_size: data.bytes_size(),
-            })
-        } else {
-            Ok(Self {
-                upload,
-                link,
-                download,
-                data,
             })
         }
     }

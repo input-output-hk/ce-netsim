@@ -51,6 +51,10 @@ impl Upload {
         reserved
     }
 
+    pub fn buffer_max_size(&self) -> u64 {
+        self.buffer.maximum_capacity()
+    }
+
     pub fn bytes_in_buffer(&self) -> u64 {
         self.in_buffer
     }
