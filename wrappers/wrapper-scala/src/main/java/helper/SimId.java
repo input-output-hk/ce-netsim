@@ -2,12 +2,12 @@ package helper;
 import jnr.ffi.Runtime;
 import jnr.ffi.Struct;
 
-public class SimId extends Struct {
+public class NodeId extends Struct {
 
     public final Unsigned64 id = new Unsigned64();
 
 
-    public SimId(Runtime runtime) {
+    public NodeId(Runtime runtime) {
         super(runtime);
     }
 

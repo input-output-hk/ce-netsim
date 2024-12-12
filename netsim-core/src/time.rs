@@ -3,11 +3,14 @@ use core::fmt;
 use logos::{Lexer, Logos};
 use std::{str::FromStr, time};
 
+/// helper Duration wrapper to help with parsing
+/// and pretty printing durations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub(crate) struct Duration(std::time::Duration);
+pub struct Duration(std::time::Duration);
 
 impl Duration {
-    pub(crate) fn new(dur: std::time::Duration) -> Self {
+    #[inline]
+    pub fn new(dur: std::time::Duration) -> Self {
         Self(dur)
     }
 

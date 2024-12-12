@@ -55,7 +55,13 @@ impl<T> LinkedList<T> {
 
     pub fn is_empty(&self) -> bool {
         let Some(head) = (unsafe { self.head.as_ref() }) else {
-            return false;
+            // we have a sigil in the head/tail so we should always
+            // have a value here.
+
+            unreachable!(
+                "This usecase should never happen and if you see this error please \
+                open an issue on the librarie's github repository."
+            )
         };
 
         head.next.is_null() || std::ptr::addr_eq(head.next, self.tail)
@@ -200,7 +206,7 @@ mod tests {
 
     #[test]
     fn push_one() {
-        let mut ll: LinkedList<()> = LinkedList::new();
+        let mut ll: LinkedList<()> = LinkedList::default();
 
         ll.push(());
 

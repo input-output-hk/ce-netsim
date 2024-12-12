@@ -54,13 +54,14 @@ to process the transit of the message: (sender, recipient, size and
 what to do of the message if the packet is dropped before reception).
 
 ```
-# use netsim_core::node::NodeId;
+# use netsim_core::{node::NodeId, network::Network};
 use netsim_core::network::Packet;
 # fn f() -> anyhow::Result<()> {
+# let mut network: Network<&'static str> = Network::new();
 # let n1 = NodeId::ZERO;
 # let n2 = NodeId::ONE;
 
-let packet = Packet::builder()
+let packet = Packet::builder(network.packet_id_generator())
   .from(n1)
   .to(n2)
   .data("message")
@@ -79,7 +80,7 @@ Now sending a packet is easy: just call [`Network::send`]
 # let mut network: Network<Data> = Network::new();
 # let n1 = network.new_node().build();
 # let n2 = network.new_node().build();
-# let packet = Packet::builder().from(n1).to(n2).data(()).build().unwrap();
+# let packet = Packet::builder(network.packet_id_generator()).from(n1).to(n2).data(()).build().unwrap();
 let packet_id = network.send(packet)?;
 # Ok(()) }; f().unwrap();
 ```
@@ -97,7 +98,7 @@ moves.
 # let mut network: Network<Data> = Network::new();
 # let n1 = network.new_node().build();
 # let n2 = network.new_node().build();
-# let packet = Packet::builder().from(n1).to(n2).data(()).build()?;
+# let packet = Packet::builder(network.packet_id_generator()).from(n1).to(n2).data(()).build().unwrap();
 # let _ = network.send(packet)?;
 network.advance_with(
   Duration::from_millis(300),

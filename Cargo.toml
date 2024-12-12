@@ -3,10 +3,9 @@ members = [
     "netsim",
     # "netsim-async",
     "netsim-core",
-    # "netsim-ffi"
+    "netsim-ffi",
 ]
 resolver = "2"
-
 
 [profile.release]
 lto = true
@@ -14,8 +13,7 @@ opt-level = 3
 panic = "abort"
 
 [profile.bench]
-debug = true
+debug = false
 
-
-# [profile.release.package.netsim-ffi]
-# strip = true
+[profile.release.package.netsim-ffi]
+strip = true

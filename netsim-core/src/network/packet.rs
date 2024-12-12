@@ -1,14 +1,22 @@
 use crate::{data::Data, node::NodeId};
 use anyhow::{bail, Result};
-use std::{fmt, hash::Hash};
+use std::{
+    fmt::{self},
+    sync::{atomic::AtomicU64, Arc},
+};
+
+/// a generator for monotonicaly increasing **unique** [`PacketId`]
+///
+#[derive(Debug, Clone, Default)]
+pub struct PacketIdGenerator(Arc<AtomicU64>);
 
 /// # [`Packet`] Identifier
 ///
 /// During the lifetime of the packet, this identifier can uniquely
 /// identify the packet.
 ///
-#[derive(Debug, Clone, Copy)]
-pub struct PacketId(*const ());
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct PacketId(u64);
 
 /// Helper function to handle a resource when it is dropped.
 ///
@@ -32,32 +40,60 @@ struct OnDrop<T>(extern "C" fn(T));
 /// the message's data on drop.
 ///
 pub struct Packet<T> {
+    id: PacketId,
     from: NodeId,
     to: NodeId,
     bytes_size: u64,
-    data: *const T,
+    data: Option<T>,
     on_drop: Option<OnDrop<T>>,
 }
 
-pub struct PacketBuilder<T> {
+pub struct PacketBuilder<'a, T> {
+    generator: &'a PacketIdGenerator,
     from: Option<NodeId>,
     to: Option<NodeId>,
     data: Option<T>,
     on_drop: Option<OnDrop<T>>,
 }
 
+impl PacketIdGenerator {
+    pub fn new() -> Self {
+        Self(Arc::new(AtomicU64::new(1)))
+    }
+
+    /// generate a new unique identifier
+    pub fn generate(&self) -> PacketId {
+        let id = self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+        debug_assert!(
+            id != 0,
+            "The only case this can be equal to 0 is if the generator overflowed. If this \
+            happens it means we have generated `u64::MAX` unique paquet identifier and we \
+            wrapped around on overflow. This shouldn't happen!"
+        );
+
+        PacketId(id)
+    }
+}
+
 impl PacketId {
     /// a _NULL_ packet identifier (i.e. doesn't have a packet to it)
     #[cfg(test)]
-    pub(crate) const NULL: Self = Self(std::ptr::null());
+    pub(crate) const NULL: Self = Self(0);
 }
 
-impl<T> PacketBuilder<T>
+impl<'a, T> PacketBuilder<'a, T>
 where
     T: Data,
 {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(generator: &'a PacketIdGenerator) -> Self {
+        Self {
+            generator,
+            from: None,
+            to: None,
+            data: None,
+            on_drop: None,
+        }
     }
 
     pub fn from(mut self, from: NodeId) -> Self {
@@ -81,6 +117,8 @@ where
     }
 
     pub fn build(self) -> Result<Packet<T>> {
+        let id = self.generator.generate();
+
         let Some(from) = self.from else {
             bail!("Missing sender information (`from')")
         };
@@ -91,10 +129,11 @@ where
             bail!("Missing packet content (`data')")
         };
         let bytes_size = data.bytes_size();
-        let data = Box::into_raw(Box::new(data));
+        let data = Some(data);
         let on_drop = self.on_drop;
 
         Ok(Packet {
+            id,
             from,
             to,
             bytes_size,
@@ -108,8 +147,8 @@ impl<T> Packet<T>
 where
     T: Data,
 {
-    pub fn builder() -> PacketBuilder<T> {
-        PacketBuilder::new()
+    pub fn builder(generator: &PacketIdGenerator) -> PacketBuilder<'_, T> {
+        PacketBuilder::new(generator)
     }
 }
 
@@ -123,41 +162,24 @@ impl<T> Packet<T> {
     }
 
     pub fn id(&self) -> PacketId {
-        let id = unsafe {
-            // hide the type so that we don't have to deal with
-            // the `T` everywhere in our code.
-            std::mem::transmute::<*const T, *const ()>(self.data)
-        };
-
-        PacketId(id)
+        self.id
     }
 
-    unsafe fn take_inner(&mut self) -> Option<T> {
-        if self.data.is_null() {
-            return None;
-        }
-
-        let ptr = std::mem::replace(&mut self.data, std::ptr::null());
-        let boxed = Box::from_raw(ptr as *mut T);
-
-        let data = *boxed;
-
-        Some(data)
+    fn take_inner(&mut self) -> Option<T> {
+        self.data.take()
     }
 
     /// consume the packet and get the inner `T`.
     ///
     pub fn into_inner(mut self) -> T {
-        unsafe {
-            self.take_inner()
-                .expect("We should always have the data available")
-        }
+        self.take_inner()
+            .expect("We should always have the data available")
     }
 }
 
 impl<T> Drop for Packet<T> {
     fn drop(&mut self) {
-        if let Some(data) = unsafe { self.take_inner() } {
+        if let Some(data) = self.take_inner() {
             if let Some(on_drop) = self.on_drop.take() {
                 on_drop.0(data);
             }
@@ -184,31 +206,9 @@ impl<T> fmt::Debug for Packet<T> {
     }
 }
 
-impl PartialEq for PacketId {
-    fn eq(&self, other: &Self) -> bool {
-        std::ptr::eq(self.0, other.0)
-    }
-}
-impl Eq for PacketId {}
-impl Hash for PacketId {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        (self.0 as u64).hash(state);
-    }
-}
 impl fmt::Display for PacketId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "0x{:016X}", self.0 as u64)
-    }
-}
-
-impl<T> Default for PacketBuilder<T> {
-    fn default() -> Self {
-        Self {
-            from: None,
-            to: None,
-            data: None,
-            on_drop: None,
-        }
+        write!(f, "0x{:016x}", self.0)
     }
 }
 
@@ -216,52 +216,18 @@ impl<T> Default for PacketBuilder<T> {
 mod tests {
     use super::*;
 
-    const FROM: NodeId = NodeId::new(0);
-    const TO: NodeId = NodeId::new(1);
-
-    fn packet<T>(data: T) -> Packet<T>
-    where
-        T: Data,
-    {
-        Packet::builder()
-            .from(FROM)
-            .to(TO)
-            .data(data)
-            .build()
-            .unwrap()
-    }
-
     #[test]
     fn packet_id_null() {
         let null = PacketId::NULL;
 
-        assert_eq!(null, PacketId(std::ptr::null()));
+        assert_eq!(null, PacketId(0));
         assert_eq!(null.to_string(), "0x0000000000000000");
-        assert_eq!(format!("{null:?}"), "PacketId(0x0)");
-    }
-
-    #[test]
-    fn packet_id_eq() {
-        let packet = packet([0; 2]);
-        let id1 = packet.id();
-        let id2 = PacketId(packet.data as *const ());
-
-        std::mem::drop(packet);
-
-        assert_eq!(id1, id2);
-    }
-
-    #[test]
-    fn packet_id_ne() {
-        let packet1 = packet([0; 2]);
-        let packet2 = packet([0; 2]);
-
-        assert_ne!(packet1.id(), packet2.id());
+        assert_eq!(format!("{null:?}"), "PacketId(0)");
     }
 
     #[test]
     fn builder_missing_from() {
-        let Err(error) = Packet::<()>::builder().build() else {
+        let Err(error) = Packet::<()>::builder(&PacketIdGenerator::new()).build() else {
             panic!("Expecting an error because missing the `from'")
         };
 
@@ -270,7 +236,10 @@ mod tests {
 
     #[test]
     fn builder_missing_to() {
-        let Err(error) = Packet::<()>::builder().from(NodeId::ZERO).build() else {
+        let Err(error) = Packet::<()>::builder(&PacketIdGenerator::new())
+            .from(NodeId::ZERO)
+            .build()
+        else {
             panic!("Expecting an error because missing the `to'")
         };
 
@@ -279,7 +248,7 @@ mod tests {
 
     #[test]
     fn builder_missing_data() {
-        let Err(error) = Packet::<()>::builder()
+        let Err(error) = Packet::<()>::builder(&PacketIdGenerator::new())
             .from(NodeId::ZERO)
             .to(NodeId::ONE)
             .build()
@@ -292,7 +261,7 @@ mod tests {
 
     #[test]
     fn builder_without_on_drop() {
-        let _packet = Packet::builder()
+        let _packet = Packet::builder(&PacketIdGenerator::new())
             .from(NodeId::ZERO)
             .to(NodeId::ONE)
             .data(())
@@ -304,7 +273,7 @@ mod tests {
     fn builder_with_on_drop() {
         extern "C" fn on_drop(_: u8) {}
 
-        let _packet = Packet::builder()
+        let _packet = Packet::builder(&PacketIdGenerator::new())
             .from(NodeId::ZERO)
             .to(NodeId::ONE)
             .data(0)
@@ -320,7 +289,7 @@ mod tests {
             unsafe { COUNTER = value }
         }
 
-        let packet = Packet::builder()
+        let packet = Packet::builder(&PacketIdGenerator::new())
             .from(NodeId::ZERO)
             .to(NodeId::ONE)
             .data(1u8)
@@ -340,7 +309,7 @@ mod tests {
             panic!("On drop shouldn't be called")
         }
 
-        let packet = Packet::builder()
+        let packet = Packet::builder(&PacketIdGenerator::new())
             .from(NodeId::ZERO)
             .to(NodeId::ONE)
             .data(1u8)

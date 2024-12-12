@@ -32,5 +32,5 @@ fn main() -> Result<()> {
 
     handle.join().unwrap();
 
-    Ok(())
+    network.shutdown()
 }

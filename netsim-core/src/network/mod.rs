@@ -15,7 +15,7 @@ use thiserror::Error;
 
 pub use self::{
     linked_list::{CursorMut, LinkedList},
-    packet::{Packet, PacketBuilder, PacketId},
+    packet::{Packet, PacketBuilder, PacketId, PacketIdGenerator},
     round::Round,
     route::{Route, RouteBuilder},
     transit::Transit,
@@ -36,6 +36,8 @@ pub use self::{
 /// [`Latency`]: crate::measure::Latency
 /// [`Bandwidth`]: crate::measure::Bandwidth
 pub struct Network<T> {
+    packet_id_generator: PacketIdGenerator,
+
     nodes: HashMap<NodeId, Node<T>>,
 
     // consideration:
@@ -137,12 +139,17 @@ where
 {
     pub fn new() -> Self {
         Self {
+            packet_id_generator: PacketIdGenerator::new(),
             nodes: HashMap::new(),
             links: HashMap::new(),
             round: Round::ZERO,
             transit: LinkedList::new(),
             id: NodeId::ZERO,
         }
+    }
+
+    pub fn packet_id_generator(&self) -> &PacketIdGenerator {
+        &self.packet_id_generator
     }
 
     pub fn new_node(&mut self) -> NodeBuilder<'_, T> {

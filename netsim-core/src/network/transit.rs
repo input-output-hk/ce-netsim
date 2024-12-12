@@ -95,7 +95,7 @@ mod tests {
     use super::*;
     use crate::{
         measure::{Bandwidth, CongestionChannel, Latency},
-        network::Route,
+        network::{packet::PacketIdGenerator, Route},
         node::{Node, NodeId},
     };
     use std::sync::Arc;
@@ -107,7 +107,7 @@ mod tests {
         let sender: Node<[u8; 1042]> = Node::new(NodeId::ZERO);
         let link = Link::new(Latency::ZERO, Arc::new(CongestionChannel::new(BD_1KBPS)));
         let recipient: Node<[u8; 1042]> = Node::new(NodeId::ONE);
-        let data = Packet::builder()
+        let data = Packet::builder(&PacketIdGenerator::new())
             .from(sender.id())
             .to(recipient.id())
             .data([0; 1_042])

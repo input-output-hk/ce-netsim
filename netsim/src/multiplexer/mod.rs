@@ -8,7 +8,11 @@ use self::{
 use crate::socket::SimSocketBuilder;
 use anyhow::{bail, Context, Result};
 use command::NewNodeCommand;
-use netsim_core::{data::Data, network::SendError, Network, NodeId, Packet};
+use netsim_core::{
+    data::Data,
+    network::{PacketIdGenerator, SendError},
+    Network, NodeId, Packet,
+};
 use std::{
     collections::{hash_map::Entry, HashMap},
     sync::{
@@ -21,6 +25,8 @@ use std::{
 
 pub struct SimContext<T> {
     commands: CommandSender<T>,
+
+    packet_id_generator: PacketIdGenerator,
 
     stop: Arc<Stop>,
 
@@ -47,17 +53,20 @@ where
 
         let multiplexer = Multiplexer::<T>::new(receiver, Arc::clone(&stop));
 
+        let packet_id_generator = multiplexer.network.packet_id_generator().clone();
+
         let thread = std::thread::spawn(|| multiplexer_run(multiplexer));
 
         Ok(Self {
             stop,
+            packet_id_generator,
             commands,
             thread,
         })
     }
 
     pub fn open(&mut self) -> SimSocketBuilder<'_, T> {
-        SimSocketBuilder::new(self.commands.clone())
+        SimSocketBuilder::new(self.commands.clone(), self.packet_id_generator.clone())
     }
 
     pub fn shutdown(self) -> Result<()> {
@@ -165,6 +174,7 @@ where
         self.inbounds();
 
         self.network.advance_with(duration, |packet| {
+            dbg!(packet.id());
             if let Entry::Occupied(mut receiver) = self.nodes.entry(packet.to()) {
                 match receiver.get_mut().try_send(packet) {
                     Ok(()) => (),
@@ -180,7 +190,7 @@ where
     }
 }
 
-const TARGETTED_ELAPSED: Duration = Duration::from_micros(1800);
+const TARGETTED_ELAPSED: Duration = Duration::from_micros(1000);
 
 fn multiplexer_run<T>(mut multiplexer: Multiplexer<T>) -> Result<()>
 where
@@ -215,6 +225,7 @@ where
         // run.
         adjustment = elapsed.saturating_sub(TARGETTED_ELAPSED);
 
+        dbg!(sleep_duration);
         std::thread::sleep(sleep_duration);
 
         instant = Instant::now();

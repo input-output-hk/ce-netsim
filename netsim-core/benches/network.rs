@@ -26,7 +26,7 @@ fn send(c: &mut Criterion) {
 
     c.bench_function("send", |b| {
         b.iter(|| {
-            let packet = PacketBuilder::new()
+            let packet = PacketBuilder::new(network.packet_id_generator())
                 .from(node1)
                 .to(node2)
                 .data(TestData)
@@ -57,7 +57,7 @@ fn bench_advance_size(group: &mut BenchmarkGroup<'_, WallTime>, size: usize) {
 
     for sender in nodes.iter().copied() {
         for receiver in nodes.iter().copied().filter(|id| id != &sender) {
-            let packet = PacketBuilder::new()
+            let packet = PacketBuilder::new(network.packet_id_generator())
                 .from(sender)
                 .to(receiver)
                 .data(TestData)

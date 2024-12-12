@@ -17,7 +17,7 @@ public enum SimError implements EnumMapper.IntegerEnum {
 
     SocketDisconnected(5),
 
-    BufferTooSmall(6);
+    CannotStartContext(6),
 
 
     private final int value;
