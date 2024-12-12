@@ -71,6 +71,18 @@ impl Route {
         RouteBuilder::new()
     }
 
+    pub fn upload(&self) -> &Upload {
+        &self.upload
+    }
+
+    pub fn link(&self) -> &Link {
+        &self.link
+    }
+
+    pub fn download(&self) -> &Download {
+        &self.download
+    }
+
     pub fn transit<T>(self, data: Packet<T>) -> Result<Transit<T>, SendError>
     where
         T: Data,
