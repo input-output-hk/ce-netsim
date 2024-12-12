@@ -19,12 +19,12 @@ int main() {
     }
 
     SimSocket* net1;
-    SimId net1_id;
+    NodeId net1_id;
     error = netsim_context_open(context, &net1);
     if (error != SimError_Success) { goto cleanup_context; }
 
     SimSocket* net2;
-    SimId net2_id;
+    NodeId net2_id;
     error = netsim_context_open(context, &net2);
     if (error != SimError_Success) { goto cleanup_net1; }
 
@@ -38,7 +38,7 @@ int main() {
     if (error != SimError_Success) { goto cleanup; }
 
     Message new_msg;
-    SimId from;
+    NodeId from;
     error = netsim_socket_recv(net2, &new_msg, &from);
     if (error != SimError_Success) { goto cleanup; }
 

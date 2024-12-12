@@ -6,19 +6,23 @@ use netsim_core::{
         DEFAULT_DOWNLOAD_BANDWIDTH, DEFAULT_DOWNLOAD_BUFFER, DEFAULT_UPLOAD_BANDWIDTH,
         DEFAULT_UPLOAD_BUFFER,
     },
-    network::PacketId,
+    network::{PacketId, PacketIdGenerator},
     Bandwidth, NodeId, Packet,
 };
 use std::sync::mpsc::{sync_channel, Receiver};
+use thiserror::Error;
 
 pub struct SimSocket<T> {
     id: NodeId,
+    packet_id_generator: PacketIdGenerator,
     download: Receiver<Packet<T>>,
     command: CommandSender<T>,
 }
 
 pub struct SimSocketBuilder<'a, T> {
     commands: CommandSender<T>,
+
+    packet_id_generator: PacketIdGenerator,
 
     // initial upload bandwidth
     upload_bandwidth: Bandwidth,
@@ -30,28 +34,35 @@ pub struct SimSocketBuilder<'a, T> {
     _marker: std::marker::PhantomData<&'a ()>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum SendError<T> {
+    #[error("Failed to send packet: disconnected.")]
     Disconnected(Packet<T>),
     /// This error should only happen if the queue is overloading with
     /// backlog data.
     ///
+    #[error("Failed to send packet: queue is full.")]
     Full(Packet<T>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum SendToError<T> {
-    FailedToBuildMessage(anyhow::Error),
+    #[error("Failed to build message")]
+    FailedToBuildMessage(#[source] anyhow::Error),
+    #[error("Failed to send packet: disconnected")]
     Disconnected(Packet<T>),
     /// This error should only happen if the queue is overloading with
     /// backlog data.
     ///
+    #[error("Failed to send packet: queue is full.")]
     Full(Packet<T>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum TryRecvError {
+    #[error("Failed to receive packet: disconnected.")]
     Disconnected,
+    #[error("No message to receive yet.")]
     Empty,
 }
 
@@ -59,8 +70,9 @@ pub enum TryRecvError {
 pub struct RecvError;
 
 impl<T> SimSocketBuilder<'_, T> {
-    pub(crate) fn new(commands: CommandSender<T>) -> Self {
+    pub(crate) fn new(commands: CommandSender<T>, packet_id_generator: PacketIdGenerator) -> Self {
         Self {
+            packet_id_generator,
             commands,
             upload_bandwidth: DEFAULT_UPLOAD_BANDWIDTH,
             upload_buffer: DEFAULT_UPLOAD_BUFFER,
@@ -93,11 +105,12 @@ impl<T> SimSocketBuilder<'_, T> {
     pub fn build(self) -> anyhow::Result<SimSocket<T>> {
         let Self {
             mut commands,
+            packet_id_generator,
             upload_bandwidth,
             upload_buffer,
             download_bandwidth,
             download_buffer,
-            ..
+            _marker,
         } = self;
         let (sender, receiver) = sync_channel(10 * 1_024);
 
@@ -111,7 +124,7 @@ impl<T> SimSocketBuilder<'_, T> {
 
         let id = commands.send_new_node(new_node)?;
 
-        Ok(SimSocket::new(id, commands, receiver))
+        Ok(SimSocket::new(id, commands, receiver, packet_id_generator))
     }
 }
 
@@ -120,16 +133,22 @@ impl<T> SimSocket<T> {
         id: NodeId,
         command: CommandSender<T>,
         download: Receiver<Packet<T>>,
+        packet_id_generator: PacketIdGenerator,
     ) -> Self {
         Self {
             id,
             command,
             download,
+            packet_id_generator,
         }
     }
 
     pub fn id(&self) -> NodeId {
         self.id
+    }
+
+    pub fn packet_id_generator(&self) -> &PacketIdGenerator {
+        &self.packet_id_generator
     }
 
     pub fn send_packet(&mut self, packet: Packet<T>) -> Result<(), SendError<T>> {
@@ -150,7 +169,7 @@ where
     T: Data,
 {
     pub fn send_to(&mut self, to: NodeId, data: T) -> Result<PacketId, SendToError<T>> {
-        let packet = Packet::builder()
+        let packet = Packet::builder(self.packet_id_generator())
             .from(self.id)
             .to(to)
             .data(data)

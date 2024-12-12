@@ -4,7 +4,7 @@ use std::{
 };
 
 pub use netsim::NodeId;
-use netsim::{HasBytesSize, SimContext as OSimContext, SimSocket as OSimSocket};
+use netsim::{Data, Packet, SimContext as OSimContext, SimSocket as OSimSocket};
 
 #[repr(C)]
 pub struct Message {
@@ -15,14 +15,20 @@ pub struct Message {
 unsafe impl Send for Message {}
 unsafe impl Sync for Message {}
 
-impl HasBytesSize for Message {
+impl Data for Message {
     fn bytes_size(&self) -> u64 {
         self.size
     }
 }
 
-pub struct SimContext(OSimContext<Message>);
-pub struct SimSocket(OSimSocket<Message>);
+pub struct SimContext {
+    context: OSimContext<Message>,
+    on_drop: extern "C" fn(Message),
+}
+pub struct SimSocket {
+    socket: OSimSocket<Message>,
+    on_drop: extern "C" fn(Message),
+}
 
 #[repr(u32)]
 pub enum SimError {
@@ -41,6 +47,9 @@ pub enum SimError {
 
     /// This indicates it's time to release the socket
     SocketDisconnected = 5,
+
+    /// cannot start context
+    CannotStartContext = 6,
 }
 
 /// Create a new NetSim Context
@@ -62,11 +71,15 @@ pub unsafe extern "C" fn netsim_context_new(
         return SimError::NotImplemented;
     }
 
-    let configuration = netsim::SimConfiguration {
-        on_drop: Some(on_drop.into()),
-        ..Default::default()
+    let context = match OSimContext::new() {
+        Ok(context) => context,
+        Err(error) => {
+            eprintln!("{error}");
+            return SimError::CannotStartContext;
+        }
     };
-    let context = Box::new(SimContext(OSimContext::with_config(configuration)));
+
+    let context = Box::new(SimContext { context, on_drop });
 
     *output = Box::into_raw(context);
     SimError::Success
@@ -91,7 +104,7 @@ pub unsafe extern "C" fn netsim_context_shutdown(context: *mut SimContext) -> Si
         // `Deref::deref` function to gain us access to the object
         // so here we bypass the _dereference_ and move `0` (the context)
         // out and call shutdown on it.
-        match context.0.shutdown() {
+        match context.context.shutdown() {
             Ok(()) => SimError::Success,
             Err(error) => {
                 // better handle the error, maybe print it to the standard err output
@@ -121,8 +134,12 @@ pub unsafe extern "C" fn netsim_context_open(
         let Some(context_mut) = context.as_mut() else {
             return SimError::NullPointerArgument;
         };
-        match context_mut.open().map(SimSocket) {
-            Ok(sim_socket) => {
+        match context_mut.open().build() {
+            Ok(socket) => {
+                let sim_socket = SimSocket {
+                    socket,
+                    on_drop: context_mut.on_drop,
+                };
                 *output = Box::into_raw(Box::new(sim_socket));
                 SimError::Success
             }
@@ -204,9 +221,9 @@ pub unsafe extern "C" fn netsim_socket_recv(
         return SimError::NullPointerArgument;
     };
 
-    if let Some((id, data)) = socket.recv() {
-        *msg = data;
-        *from = id;
+    if let Ok(packet) = socket.recv_packet() {
+        *from = packet.from();
+        *msg = packet.into_inner();
 
         SimError::Success
     } else {
@@ -237,8 +254,22 @@ pub unsafe extern "C" fn netsim_socket_send_to(
         return SimError::NullPointerArgument;
     };
 
-    if let Err(error) = socket.send_to(to, msg) {
-        eprintln!("{error:?}");
+    let packet = Packet::builder(socket.packet_id_generator())
+        .from(socket.id())
+        .to(to)
+        .data(msg)
+        .on_drop(socket.on_drop)
+        .build();
+    let packet = match packet {
+        Ok(packet) => packet,
+        Err(error) => {
+            eprintln!("{error:?}");
+            return SimError::Undefined;
+        }
+    };
+
+    if let Err(error) = socket.send_packet(packet) {
+        eprintln!("{error}");
         return SimError::Undefined;
     }
 
@@ -248,23 +279,23 @@ pub unsafe extern "C" fn netsim_socket_send_to(
 impl Deref for SimContext {
     type Target = OSimContext<Message>;
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.context
     }
 }
 impl DerefMut for SimContext {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+        &mut self.context
     }
 }
 
 impl Deref for SimSocket {
     type Target = OSimSocket<Message>;
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.socket
     }
 }
 impl DerefMut for SimSocket {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+        &mut self.socket
     }
 }

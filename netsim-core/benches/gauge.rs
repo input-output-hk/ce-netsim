@@ -3,7 +3,7 @@ use netsim_core::{
     data::Data,
     link::Link,
     measure::{Bandwidth, CongestionChannel, Gauge, Latency, Upload},
-    network::{Packet, Round, Route},
+    network::{Packet, PacketIdGenerator, Round, Route},
     node::{Node, NodeId},
 };
 use std::{sync::Arc, time::Duration};
@@ -75,7 +75,7 @@ fn transit(c: &mut Criterion) {
     let sender: Node<TestData> = Node::new(NodeId::ZERO);
     let link = Link::new(Latency::ZERO, Arc::new(CongestionChannel::new(BD_1KBPS)));
     let recipient: Node<TestData> = Node::new(NodeId::ONE);
-    let data = Packet::builder()
+    let data = Packet::builder(&PacketIdGenerator::new())
         .from(sender.id())
         .to(recipient.id())
         .data(TestData(u64::MAX))

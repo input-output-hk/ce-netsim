@@ -13,7 +13,7 @@ fn main() -> anyhow::Result<()> {
         .set_download_bandwidth("100mbps".parse()?)
         .build();
 
-    let packet = Packet::builder()
+    let packet = Packet::builder(network.packet_id_generator())
         .from(sender)
         .to(receiver)
         .data("Hello World!")

@@ -8,4 +8,4 @@
 
 
 // SimId is not exported by cbindgen
-typedef uint64_t SimId;
+typedef uint64_t NodeId;
