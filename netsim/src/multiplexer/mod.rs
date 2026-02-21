@@ -16,12 +16,18 @@ use netsim_core::{
 use std::{
     collections::{hash_map::Entry, HashMap},
     sync::{
+        atomic::{AtomicU64, Ordering},
         mpsc::{SyncSender, TryRecvError, TrySendError},
         Arc,
     },
     thread::JoinHandle,
     time::{Duration, Instant},
 };
+
+struct NodeEntry<T> {
+    sender: SyncSender<Packet<T>>,
+    dropped: Arc<AtomicU64>,
+}
 
 pub struct SimContext<T> {
     commands: CommandSender<T>,
@@ -33,12 +39,51 @@ pub struct SimContext<T> {
     thread: JoinHandle<Result<()>>,
 }
 
+/// Builder for configuring a link between two nodes in a [`SimContext`].
+///
+/// Obtained via [`SimContext::configure_link`]. Call [`.apply()`](SimLinkBuilder::apply) to send
+/// the configuration to the multiplexer.
+pub struct SimLinkBuilder<'a, T> {
+    a: NodeId,
+    b: NodeId,
+    latency: netsim_core::Latency,
+    bandwidth: netsim_core::Bandwidth,
+    packet_loss: netsim_core::PacketLoss,
+    commands: &'a mut CommandSender<T>,
+}
+
+impl<T> SimLinkBuilder<'_, T> {
+    /// Set the one-way latency of this link.
+    pub fn set_latency(mut self, latency: netsim_core::Latency) -> Self {
+        self.latency = latency;
+        self
+    }
+
+    /// Set the shared bandwidth capacity of this link.
+    pub fn set_bandwidth(mut self, bandwidth: netsim_core::Bandwidth) -> Self {
+        self.bandwidth = bandwidth;
+        self
+    }
+
+    /// Set the probabilistic packet loss rate for this link.
+    pub fn set_packet_loss(mut self, packet_loss: netsim_core::PacketLoss) -> Self {
+        self.packet_loss = packet_loss;
+        self
+    }
+
+    /// Send the link configuration to the multiplexer.
+    pub fn apply(self) -> Result<()> {
+        self.commands
+            .send_configure_link(self.a, self.b, self.latency, self.bandwidth, self.packet_loss)
+    }
+}
+
 struct Multiplexer<T> {
     network: Network<T>,
 
     commands: CommandReceiver<T>,
 
-    nodes: HashMap<NodeId, SyncSender<Packet<T>>>,
+    nodes: HashMap<NodeId, NodeEntry<T>>,
 
     stop: Arc<Stop>,
 }
@@ -67,6 +112,32 @@ where
 
     pub fn open(&mut self) -> SimSocketBuilder<'_, T> {
         SimSocketBuilder::new(self.commands.clone(), self.packet_id_generator.clone())
+    }
+
+    /// Returns a point-in-time snapshot of the network state.
+    ///
+    /// Blocks briefly until the multiplexer processes the request.
+    /// Includes per-node buffer usage, bandwidth, drop counts,
+    /// and per-link latency, bandwidth, packet loss, and bytes in transit.
+    pub fn stats(&mut self) -> Result<crate::stats::SimStats> {
+        self.commands.send_stats()
+    }
+
+    /// Configure the link between two nodes.
+    ///
+    /// Returns a [`SimLinkBuilder`] to set latency and bandwidth.
+    /// Call [`.apply()`](SimLinkBuilder::apply) to send the configuration to the multiplexer.
+    ///
+    /// This must be called after both nodes are created.
+    pub fn configure_link(&mut self, a: NodeId, b: NodeId) -> SimLinkBuilder<'_, T> {
+        SimLinkBuilder {
+            a,
+            b,
+            latency: netsim_core::Latency::default(),
+            bandwidth: netsim_core::Bandwidth::default(),
+            packet_loss: netsim_core::PacketLoss::default(),
+            commands: &mut self.commands,
+        }
     }
 
     pub fn shutdown(self) -> Result<()> {
@@ -106,28 +177,30 @@ where
             Command::Packet(packet) => {
                 match self.network.send(packet) {
                     Ok(()) => (),
-                    Err(SendError::Route(error)) => {
+                    Err(SendError::Route(_error)) => {
                         // failed to build the route between the two nodes;
                     }
-                    Err(SendError::SenderBufferFull { .. }) => {
-                        // the sender's buffer is full, we should notify the
-                        // sender that the buffer is full and no new message
-                        // can be added
-
-                        // TODO:
-                        //    in essense we want to avoid doing that because we are
-                        //    adding too much go and back between the mutiplexer and
-                        //    the nodes. Ideally we want the node to reserve the packet
-                        //    on their side before the send
-                        //
-                        //    Or maybe this is not a problem and it only comes down to
-                        //    implemented a "TCP/UDP" layer on top of `netsim`.
+                    Err(SendError::SenderBufferFull { sender, .. }) => {
+                        // UDP semantics: dropped packets are not errors, they are expected.
+                        // Increment the drop counter so callers can observe the loss.
+                        if let Some(entry) = self.nodes.get(&sender) {
+                            entry.dropped.fetch_add(1, Ordering::Relaxed);
+                        }
                     }
                 }
+            }
+            Command::ConfigureLink { a, b, latency, bandwidth, packet_loss } => {
+                self.network
+                    .configure_link(a, b)
+                    .set_latency(latency)
+                    .set_bandwidth(bandwidth)
+                    .set_packet_loss(packet_loss)
+                    .apply();
             }
             Command::NewNode(nnc, reply) => {
                 let NewNodeCommand {
                     sender,
+                    dropped,
                     upload_bandwidth,
                     upload_buffer,
                     download_bandwidth,
@@ -149,7 +222,30 @@ where
                     return;
                 };
 
-                self.nodes.insert(node_id, sender);
+                self.nodes.insert(node_id, NodeEntry { sender, dropped });
+            }
+            Command::Stats(reply) => {
+                use crate::stats::{NodeStats, SimStats};
+
+                let core_stats = self.network.stats();
+
+                let nodes = core_stats
+                    .nodes
+                    .into_iter()
+                    .map(|ns| {
+                        let packets_dropped = self
+                            .nodes
+                            .get(&ns.id)
+                            .map(|e| e.dropped.load(Ordering::Relaxed))
+                            .unwrap_or(0);
+                        NodeStats { inner: ns, packets_dropped }
+                    })
+                    .collect();
+
+                let stats = SimStats { nodes, links: core_stats.links };
+
+                // ignore if the receiver was already dropped
+                let _ = reply.send(stats);
             }
         }
     }
@@ -174,12 +270,11 @@ where
         self.inbounds();
 
         self.network.advance_with(duration, |packet| {
-            dbg!(packet.id());
-            if let Entry::Occupied(mut receiver) = self.nodes.entry(packet.to()) {
-                match receiver.get_mut().try_send(packet) {
+            if let Entry::Occupied(mut entry) = self.nodes.entry(packet.to()) {
+                match entry.get_mut().sender.try_send(packet) {
                     Ok(()) => (),
                     Err(TrySendError::Disconnected(_)) => {
-                        receiver.remove();
+                        entry.remove();
                     }
                     Err(TrySendError::Full(_)) => {
                         // receiver full, do nothing and drop the packet
@@ -190,7 +285,7 @@ where
     }
 }
 
-const TARGETTED_ELAPSED: Duration = Duration::from_micros(1000);
+const TARGETTED_ELAPSED: Duration = Duration::from_micros(200);
 
 fn multiplexer_run<T>(mut multiplexer: Multiplexer<T>) -> Result<()>
 where
@@ -210,7 +305,7 @@ where
     let mut adjustment = Duration::ZERO;
 
     while !multiplexer.stopped() {
-        multiplexer.step(TARGETTED_ELAPSED + adjustment);
+        multiplexer.step(TARGETTED_ELAPSED.saturating_add(adjustment));
 
         // compute how much time actually elapsed while performing the
         // multiplexer core operations

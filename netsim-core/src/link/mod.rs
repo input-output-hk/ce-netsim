@@ -1,7 +1,7 @@
 mod id;
 
 use crate::{
-    measure::{CongestionChannel, Latency},
+    measure::{Bandwidth, CongestionChannel, Latency, PacketLoss},
     network::Round,
 };
 use std::{sync::Arc, time::Duration};
@@ -11,7 +11,7 @@ pub use self::id::LinkId;
 /// A link state between two [`Node`]s.
 ///
 /// The [`Link`] is responsible for maintaining the congestion [`Bandwidth`]
-/// between two nodes and for maintaining the [`Latency`].
+/// between two nodes and for maintaining the [`Latency`] and [`PacketLoss`].
 ///
 /// [`Node`]: crate::node::Node
 /// [`Bandwidth`]: crate::measure::Bandwidth
@@ -22,6 +22,7 @@ pub struct Link {
 
     channel: Arc<CongestionChannel>,
     latency: Latency,
+    packet_loss: PacketLoss,
     round: Round,
 }
 
@@ -32,15 +33,41 @@ impl Link {
             rem_latency: latency.into_duration(),
             channel,
             latency,
+            packet_loss: PacketLoss::default(),
             round: Round::default(),
         }
+    }
+
+    pub fn new_with_loss(
+        latency: Latency,
+        channel: Arc<CongestionChannel>,
+        packet_loss: PacketLoss,
+    ) -> Self {
+        Self {
+            pending: 0,
+            rem_latency: latency.into_duration(),
+            channel,
+            latency,
+            packet_loss,
+            round: Round::default(),
+        }
+    }
+
+    /// Returns `true` if this packet should be dropped based on the link's packet loss model.
+    pub fn should_drop_packet(&self) -> bool {
+        self.packet_loss.should_drop()
+    }
+
+    /// Returns the packet loss configuration for this link.
+    pub fn packet_loss(&self) -> PacketLoss {
+        self.packet_loss
     }
 
     /// create a new [`Link`] off this link. However the pending
     /// data and the current round and the consummed latency are
     /// reset
     pub(crate) fn duplicate(&self) -> Self {
-        Self::new(self.latency, self.channel.clone())
+        Self::new_with_loss(self.latency, self.channel.clone(), self.packet_loss)
     }
 
     pub fn update_capacity(&mut self, round: Round, duration: Duration) {
@@ -74,6 +101,16 @@ impl Link {
 
     pub fn bytes_in_transit(&self) -> u64 {
         self.pending
+    }
+
+    /// Returns the configured latency for this link.
+    pub fn latency(&self) -> Latency {
+        self.latency
+    }
+
+    /// Returns the configured bandwidth for this link.
+    pub fn bandwidth(&self) -> Bandwidth {
+        self.channel.bandwidth()
     }
 }
 

@@ -57,12 +57,12 @@ impl Data for str {
 }
 impl Data for Vec<u8> {
     fn bytes_size(&self) -> u64 {
-        (self.capacity() + std::mem::size_of_val(self)) as u64
+        self.len() as u64
     }
 }
 impl Data for String {
     fn bytes_size(&self) -> u64 {
-        (self.capacity() + std::mem::size_of_val(self)) as u64
+        self.len() as u64
     }
 }
 
@@ -96,15 +96,8 @@ mod tests {
 
     #[test]
     fn string() {
-        #![allow(clippy::identity_op)]
-
-        const STRING_OVERHEAD: u64 = 24;
-
-        assert_eq!(String::new().bytes_size(), 0 + STRING_OVERHEAD);
-        assert_eq!(
-            "hello world!".to_string().bytes_size(),
-            12 + STRING_OVERHEAD
-        );
+        assert_eq!(String::new().bytes_size(), 0);
+        assert_eq!("hello world!".to_string().bytes_size(), 12);
     }
 
     #[test]
@@ -122,11 +115,7 @@ mod tests {
 
     #[test]
     fn vec() {
-        #![allow(clippy::identity_op)]
-
-        const VEC_OVERHEAD: u64 = 24;
-
-        assert_eq!(vec![].bytes_size(), 0 + VEC_OVERHEAD);
-        assert_eq!(vec![0u8; 12].bytes_size(), 12 + VEC_OVERHEAD);
+        assert_eq!(Vec::<u8>::new().bytes_size(), 0);
+        assert_eq!(vec![0u8; 12].bytes_size(), 12);
     }
 }

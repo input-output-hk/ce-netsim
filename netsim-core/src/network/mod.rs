@@ -7,10 +7,10 @@ mod transit;
 use crate::{
     data::Data,
     link::{Link, LinkId},
-    measure::Bandwidth,
+    measure::{Bandwidth, CongestionChannel, Latency},
     node::{Node, NodeId},
 };
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 use thiserror::Error;
 
 pub use self::{
@@ -67,6 +67,47 @@ pub struct NodeBuilder<'a, T> {
     network: &'a mut Network<T>,
 }
 
+/// Builder for configuring a link between two nodes.
+///
+/// Obtained via [`Network::configure_link`]. Call [`LinkBuilder::apply`] to
+/// commit the configuration.
+pub struct LinkBuilder<'a, T> {
+    a: NodeId,
+    b: NodeId,
+    latency: Latency,
+    bandwidth: Bandwidth,
+    packet_loss: crate::measure::PacketLoss,
+    network: &'a mut Network<T>,
+}
+
+impl<T> LinkBuilder<'_, T> {
+    /// Set the one-way latency of this link.
+    pub fn set_latency(mut self, latency: Latency) -> Self {
+        self.latency = latency;
+        self
+    }
+
+    /// Set the shared bandwidth capacity of this link.
+    pub fn set_bandwidth(mut self, bandwidth: Bandwidth) -> Self {
+        self.bandwidth = bandwidth;
+        self
+    }
+
+    /// Set the probabilistic packet loss rate for this link.
+    pub fn set_packet_loss(mut self, packet_loss: crate::measure::PacketLoss) -> Self {
+        self.packet_loss = packet_loss;
+        self
+    }
+
+    /// Commit the link configuration to the network.
+    pub fn apply(self) {
+        let Self { a, b, latency, bandwidth, packet_loss, network } = self;
+        let id = LinkId::new((a, b));
+        let channel = Arc::new(CongestionChannel::new(bandwidth));
+        network.links.insert(id, Link::new_with_loss(latency, channel, packet_loss));
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum RouteError {
     #[error("Sender ({sender}) Not Found")]
@@ -116,7 +157,7 @@ impl<T> NodeBuilder<'_, T> {
     }
 
     pub fn set_download_bandwidth(mut self, bandwidth: Bandwidth) -> Self {
-        self.node.set_upload_bandwidth(bandwidth);
+        self.node.set_download_bandwidth(bandwidth);
         self
     }
 
@@ -156,6 +197,40 @@ where
         self.id = self.id.next();
         NodeBuilder {
             node: Node::new(self.id),
+            network: self,
+        }
+    }
+
+    /// Configure the link between two nodes.
+    ///
+    /// Returns a [`LinkBuilder`] that allows setting latency and bandwidth.
+    /// Call [`.apply()`](LinkBuilder::apply) to commit.
+    ///
+    /// If a link already exists between these nodes it will be replaced.
+    /// In-flight packets on the old link will complete with the old settings.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use netsim_core::{network::Network, Bandwidth, Latency};
+    /// # use std::time::Duration;
+    /// let mut network: Network<()> = Network::new();
+    /// let n1 = network.new_node().build();
+    /// let n2 = network.new_node().build();
+    ///
+    /// network
+    ///     .configure_link(n1, n2)
+    ///     .set_latency(Latency::new(Duration::from_millis(10)))
+    ///     .set_bandwidth("100mbps".parse().unwrap())
+    ///     .apply();
+    /// ```
+    pub fn configure_link(&mut self, a: NodeId, b: NodeId) -> LinkBuilder<'_, T> {
+        LinkBuilder {
+            a,
+            b,
+            latency: Latency::default(),
+            bandwidth: Bandwidth::default(),
+            packet_loss: crate::measure::PacketLoss::default(),
             network: self,
         }
     }
@@ -204,6 +279,14 @@ where
         let from = packet.from();
         let to = packet.to();
 
+        // Check packet loss before routing (avoids building the full route for dropped packets)
+        let edge = LinkId::new((from, to));
+        if let Some(link) = self.links.get(&edge) {
+            if link.should_drop_packet() {
+                return Ok(());
+            }
+        }
+
         let route = self.route(from, to)?;
 
         let transit = route.transit(packet)?;
@@ -211,6 +294,42 @@ where
         self.transit.push(transit);
 
         Ok(())
+    }
+
+    /// Returns a point-in-time snapshot of the network state.
+    ///
+    /// Includes per-node buffer and bandwidth stats and per-link latency,
+    /// bandwidth, packet loss, and bytes in transit.
+    pub fn stats(&self) -> crate::stats::NetworkStats {
+        use crate::stats::{LinkStats, NetworkStats, NodeStats};
+
+        let nodes = self
+            .nodes
+            .values()
+            .map(|node| NodeStats {
+                id: node.id(),
+                upload_buffer_used: node.upload_buffer_used(),
+                upload_buffer_max: node.upload_buffer_max(),
+                download_buffer_used: node.download_buffer_used(),
+                download_buffer_max: node.download_buffer_max(),
+                upload_bandwidth: node.upload_bandwidth(),
+                download_bandwidth: node.download_bandwidth(),
+            })
+            .collect();
+
+        let links = self
+            .links
+            .iter()
+            .map(|(id, link)| LinkStats {
+                id: *id,
+                latency: link.latency(),
+                bandwidth: link.bandwidth(),
+                packet_loss: link.packet_loss(),
+                bytes_in_transit: link.bytes_in_transit(),
+            })
+            .collect();
+
+        NetworkStats { nodes, links }
     }
 
     /// advsance the network state and handle network packets

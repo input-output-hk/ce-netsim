@@ -5,13 +5,17 @@
 
 mod multiplexer;
 mod socket;
+pub mod stats;
 
 // convenient re-export of `netsim_core` core objects
-pub use netsim_core::{data::Data, Bandwidth, Latency, NodeId, Packet, PacketBuilder, PacketId};
+pub use netsim_core::{
+    data::Data, Bandwidth, Latency, LinkId, NodeId, Packet, PacketBuilder, PacketId, PacketLoss,
+};
 
 pub use self::{
-    multiplexer::SimContext,
+    multiplexer::{SimContext, SimLinkBuilder},
     socket::{RecvError, SendError, SendToError, SimSocket, TryRecvError},
+    stats::{NodeStats, SimStats},
 };
 
 #[cfg(test)]
@@ -52,8 +56,18 @@ mod tests {
         let id = packet.id();
         let msg = packet.into_inner();
         let elapsed = msg.elapsed();
-        // assert_eq!(elapsed.as_micros(), 5000);
 
         assert_eq!(id, packet_id);
+        // The default link latency is 5ms. Wall-clock time will always be >= 5ms
+        // because the multiplexer drives simulation time at real-time pace.
+        // We use a loose upper bound to avoid flakiness on slow machines.
+        assert!(
+            elapsed.as_micros() >= 5000,
+            "elapsed {elapsed:?} should be >= 5ms (default latency)"
+        );
+        assert!(
+            elapsed.as_millis() < 1000,
+            "elapsed {elapsed:?} should arrive in under 1s"
+        );
     }
 }

@@ -9,7 +9,11 @@ use netsim_core::{
     network::{PacketId, PacketIdGenerator},
     Bandwidth, NodeId, Packet,
 };
-use std::sync::mpsc::{sync_channel, Receiver};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    mpsc::{sync_channel, Receiver},
+    Arc,
+};
 use thiserror::Error;
 
 pub struct SimSocket<T> {
@@ -17,6 +21,7 @@ pub struct SimSocket<T> {
     packet_id_generator: PacketIdGenerator,
     download: Receiver<Packet<T>>,
     command: CommandSender<T>,
+    dropped: Arc<AtomicU64>,
 }
 
 pub struct SimSocketBuilder<'a, T> {
@@ -113,9 +118,11 @@ impl<T> SimSocketBuilder<'_, T> {
             _marker,
         } = self;
         let (sender, receiver) = sync_channel(10 * 1_024);
+        let dropped = Arc::new(AtomicU64::new(0));
 
         let new_node = NewNodeCommand {
             sender,
+            dropped: Arc::clone(&dropped),
             upload_bandwidth,
             upload_buffer,
             download_bandwidth,
@@ -124,7 +131,7 @@ impl<T> SimSocketBuilder<'_, T> {
 
         let id = commands.send_new_node(new_node)?;
 
-        Ok(SimSocket::new(id, commands, receiver, packet_id_generator))
+        Ok(SimSocket::new(id, commands, receiver, packet_id_generator, dropped))
     }
 }
 
@@ -134,12 +141,14 @@ impl<T> SimSocket<T> {
         command: CommandSender<T>,
         download: Receiver<Packet<T>>,
         packet_id_generator: PacketIdGenerator,
+        dropped: Arc<AtomicU64>,
     ) -> Self {
         Self {
             id,
             command,
             download,
             packet_id_generator,
+            dropped,
         }
     }
 
@@ -149,6 +158,13 @@ impl<T> SimSocket<T> {
 
     pub fn packet_id_generator(&self) -> &PacketIdGenerator {
         &self.packet_id_generator
+    }
+
+    /// Returns the number of packets dropped for this node due to a full sender buffer.
+    ///
+    /// Packets are dropped silently (UDP semantics). Use this counter to observe loss.
+    pub fn packets_dropped(&self) -> u64 {
+        self.dropped.load(Ordering::Relaxed)
     }
 
     pub fn send_packet(&mut self, packet: Packet<T>) -> Result<(), SendError<T>> {

@@ -1,9 +1,7 @@
 [workspace]
 members = [
-    "netsim",
-    # "netsim-async",
     "netsim-core",
-    "netsim-ffi",
+    "netsim",
 ]
 resolver = "2"
 
@@ -15,5 +13,3 @@ panic = "abort"
 [profile.bench]
 debug = false
 
-[profile.release.package.netsim-ffi]
-strip = true

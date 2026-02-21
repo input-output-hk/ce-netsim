@@ -59,6 +59,30 @@ impl<T> Node<T> {
         self.inbound_buffer.set_maximum_capacity(buffer_size);
     }
 
+    pub fn upload_buffer_used(&self) -> u64 {
+        self.outbound_buffer.used_capacity()
+    }
+
+    pub fn upload_buffer_max(&self) -> u64 {
+        self.outbound_buffer.maximum_capacity()
+    }
+
+    pub fn download_buffer_used(&self) -> u64 {
+        self.inbound_buffer.used_capacity()
+    }
+
+    pub fn download_buffer_max(&self) -> u64 {
+        self.inbound_buffer.maximum_capacity()
+    }
+
+    pub fn upload_bandwidth(&self) -> Bandwidth {
+        self.outbound_channel.bandwidth()
+    }
+
+    pub fn download_bandwidth(&self) -> Bandwidth {
+        self.inbound_channel.bandwidth()
+    }
+
     pub fn upload(&self) -> Upload {
         Upload::new(
             Arc::clone(&self.outbound_buffer),

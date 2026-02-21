@@ -125,10 +125,38 @@ pub mod link;
 pub mod measure;
 pub mod network;
 pub mod node;
+pub mod stats;
 pub mod time;
 
+#[cfg(test)]
+use std::time::Duration;
+
 pub use self::{
-    measure::{Bandwidth, Latency},
-    network::{Network, Packet, PacketBuilder, PacketId},
+    link::LinkId,
+    measure::{Bandwidth, Latency, PacketLoss},
+    network::{LinkBuilder, Network, Packet, PacketBuilder, PacketId},
     node::NodeId,
+    stats::{LinkStats, NetworkStats, NodeStats},
 };
+
+#[test]
+fn simple() {
+    let mut network = Network::<()>::new();
+    let n1 = network.new_node().build();
+    let n2 = network.new_node().build();
+    let packet = Packet::builder(network.packet_id_generator())
+        .from(n1)
+        .to(n2)
+        .data(())
+        .build()
+        .unwrap();
+
+    network.send(packet).unwrap();
+
+    let mut packet_received = false;
+    network.advance_with(Duration::from_millis(5), |_| {
+        packet_received = true;
+    });
+
+    assert!(packet_received);
+}

@@ -1,15 +1,31 @@
 use anyhow::{anyhow, Context, Result};
-use netsim_core::{Bandwidth, NodeId, Packet};
-use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TryRecvError, TrySendError};
+use netsim_core::{Bandwidth, Latency, NodeId, Packet, PacketLoss};
+use crate::stats::SimStats;
+use std::sync::{
+    atomic::AtomicU64,
+    mpsc::{sync_channel, Receiver, SyncSender, TryRecvError, TrySendError},
+    Arc,
+};
 
 pub(crate) enum Command<T> {
     Packet(Packet<T>),
     NewNode(NewNodeCommand<T>, SyncSender<NodeId>),
+    ConfigureLink {
+        a: NodeId,
+        b: NodeId,
+        latency: Latency,
+        bandwidth: Bandwidth,
+        packet_loss: PacketLoss,
+    },
+    Stats(SyncSender<SimStats>),
 }
 
 pub(crate) struct NewNodeCommand<T> {
     // where to send messages onces they are received
     pub(crate) sender: SyncSender<Packet<T>>,
+
+    /// shared counter incremented each time a packet is dropped for this node
+    pub(crate) dropped: Arc<AtomicU64>,
 
     // initial upload bandwidth
     pub(crate) upload_bandwidth: Bandwidth,
@@ -58,6 +74,29 @@ impl<T> CommandSender<T> {
         answer
             .recv()
             .context("Failed to receive response from Multiplexer about adding a new node.")
+    }
+
+    pub(crate) fn send_configure_link(
+        &mut self,
+        a: NodeId,
+        b: NodeId,
+        latency: Latency,
+        bandwidth: Bandwidth,
+        packet_loss: PacketLoss,
+    ) -> Result<()> {
+        self.send(Command::ConfigureLink { a, b, latency, bandwidth, packet_loss })
+            .map_err(|error| anyhow!("Failed to send configure link command: {error}"))
+    }
+
+    pub(crate) fn send_stats(&mut self) -> Result<SimStats> {
+        let (reply, answer) = sync_channel(1);
+
+        self.send(Command::Stats(reply))
+            .map_err(|error| anyhow!("Failed to send stats command: {error}"))?;
+
+        answer
+            .recv()
+            .context("Failed to receive stats response from Multiplexer.")
     }
 }
 
