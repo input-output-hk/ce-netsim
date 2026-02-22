@@ -1,7 +1,7 @@
 mod id;
 
 use crate::{
-    measure::{Bandwidth, CongestionChannel, Latency, PacketLoss},
+    measure::{Bandwidth, CongestionChannel, Latency, PacketLoss, PacketLossController},
     network::Round,
 };
 use std::{sync::Arc, time::Duration};
@@ -15,15 +15,24 @@ pub use self::id::LinkId;
 ///
 /// [`Node`]: crate::node::Node
 /// [`Bandwidth`]: crate::measure::Bandwidth
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Link {
     pending: u64,
     rem_latency: Duration,
 
     channel: Arc<CongestionChannel>,
     latency: Latency,
-    packet_loss: PacketLoss,
+    packet_loss: PacketLossController,
     round: Round,
+}
+
+impl Default for Link {
+    fn default() -> Self {
+        Self::new(
+            Latency::default(),
+            Arc::new(CongestionChannel::default()),
+        )
+    }
 }
 
 impl Link {
@@ -33,7 +42,7 @@ impl Link {
             rem_latency: latency.into_duration(),
             channel,
             latency,
-            packet_loss: PacketLoss::default(),
+            packet_loss: PacketLossController::from_seed(PacketLoss::default(), 0),
             round: Round::default(),
         }
     }
@@ -48,33 +57,34 @@ impl Link {
             rem_latency: latency.into_duration(),
             channel,
             latency,
-            packet_loss,
+            packet_loss: PacketLossController::from_seed(packet_loss, 0),
             round: Round::default(),
         }
     }
 
     /// Returns `true` if this packet should be dropped based on the link's packet loss model.
-    pub fn should_drop_packet(&self) -> bool {
+    pub fn should_drop_packet(&mut self) -> bool {
         self.packet_loss.should_drop()
     }
 
     /// Returns the packet loss configuration for this link.
     pub fn packet_loss(&self) -> PacketLoss {
-        self.packet_loss
+        self.packet_loss.cfg()
     }
 
     /// create a new [`Link`] off this link. However the pending
     /// data and the current round and the consummed latency are
     /// reset
     pub(crate) fn duplicate(&self) -> Self {
-        Self::new_with_loss(self.latency, self.channel.clone(), self.packet_loss)
+        Self::new_with_loss(self.latency, self.channel.clone(), self.packet_loss.cfg())
     }
 
     pub fn update_capacity(&mut self, round: Round, duration: Duration) {
         if self.round != round {
             self.round = round;
             let min = std::cmp::min(self.rem_latency, duration);
-            self.rem_latency = self.rem_latency.saturating_sub(duration);
+
+            self.rem_latency = self.rem_latency.saturating_sub(min);
             let rem = duration.saturating_sub(min);
 
             self.channel.update_capacity(round, rem);
@@ -109,7 +119,7 @@ impl Link {
     }
 
     /// Returns the configured bandwidth for this link.
-    pub fn bandwidth(&self) -> Bandwidth {
+    pub fn bandwidth(&self) -> &Bandwidth {
         self.channel.bandwidth()
     }
 }
@@ -119,7 +129,8 @@ mod tests {
     use super::*;
     use crate::measure::Bandwidth;
 
-    const BW: Bandwidth = Bandwidth::new(1_024, Duration::from_secs(1));
+    // 1 byte/µs = 1_000_000 bytes/sec (minimum representable bandwidth)
+    const BW: Bandwidth = Bandwidth::new(1, Duration::from_micros(1));
 
     #[test]
     fn default() {
@@ -128,7 +139,7 @@ mod tests {
         assert_eq!(link.pending, 0);
         assert_eq!(link.round, Round::ZERO);
         assert_eq!(link.latency, Latency::default());
-        assert_eq!(link.channel.bandwidth(), Bandwidth::MAX);
+        assert_eq!(link.channel.bandwidth(), &Bandwidth::MAX);
     }
 
     #[test]
@@ -186,19 +197,20 @@ mod tests {
         // is called again
         assert_eq!(link.bytes_in_transit(), 24);
 
-        link.update_capacity(round, Duration::from_secs(1));
+        // 1 byte/µs over 1µs = 1 byte capacity; update with 1µs so capacity is tight
+        link.update_capacity(round, Duration::from_micros(100));
 
-        // we ask the link to process 100 additional bytes to the 24 already
-        // in transit.
-        let processed = link.process(100);
-        assert_eq!(processed, 124);
-        assert_eq!(link.bytes_in_transit(), 0);
+        // we ask the link to process 200 additional bytes to the 24 already
+        // in transit; capacity is 100 bytes, so 24+200=224 but only 100 fit.
+        let processed = link.process(200);
+        assert_eq!(processed, 100);
+        assert_eq!(link.bytes_in_transit(), 124);
 
         // if we ask for more than remaining then the left over
         // will remain in the `in_transit` buffer.
-        let processed = link.process(1_000);
-        assert_eq!(processed, 900);
-        assert_eq!(link.bytes_in_transit(), 100);
+        let processed = link.process(0);
+        assert_eq!(processed, 0);
+        assert_eq!(link.bytes_in_transit(), 124);
     }
 
     #[test]
@@ -217,9 +229,11 @@ mod tests {
         assert!(!link.completed());
         assert_eq!(link.bytes_in_transit(), 0);
 
+        // 1_500ms advance: 500ms remaining latency consumed, 1_000ms left for bandwidth
+        // capacity = 1 byte/µs * 1_000_000µs = 1_000_000
         link.update_capacity(round.next(), Duration::from_millis(1500));
         assert!(link.rem_latency.is_zero());
         assert!(link.completed());
-        assert_eq!(link.channel.capacity(), 1_024);
+        assert_eq!(link.channel.capacity(), 1_000_000);
     }
 }

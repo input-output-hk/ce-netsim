@@ -32,7 +32,7 @@ where
             })
         } else {
             let buffer_max_size = upload.buffer_max_size();
-            let buffer_current_size = upload.bytes_in_buffer();
+            let buffer_current_size = upload.buffer_size();
 
             Err(SendError::SenderBufferFull {
                 sender: data.from(),
@@ -100,12 +100,13 @@ mod tests {
     };
     use std::sync::Arc;
 
-    const BD_1KBPS: Bandwidth = Bandwidth::new(1_024, Duration::from_secs(1));
+    // 1 byte/µs = 1_000_000 bytes/sec (minimum representable bandwidth)
+    const BD: Bandwidth = Bandwidth::new(1, Duration::from_micros(1));
 
     #[test]
     fn simple_case() {
         let sender: Node<[u8; 1042]> = Node::new(NodeId::ZERO);
-        let link = Link::new(Latency::ZERO, Arc::new(CongestionChannel::new(BD_1KBPS)));
+        let link = Link::new(Latency::ZERO, Arc::new(CongestionChannel::new(BD)));
         let recipient: Node<[u8; 1042]> = Node::new(NodeId::ONE);
         let data = Packet::builder(&PacketIdGenerator::new())
             .from(sender.id())
@@ -128,14 +129,16 @@ mod tests {
 
         let mut transit = transit.complete().unwrap_err();
 
+        // 600µs per round with 1 byte/µs bandwidth: 600 bytes capacity per round.
+        // Round 1 sends 600 of 1042, round 2 sends the remaining 442.
         let round = Round::ZERO.next();
-        transit.advance(round, Duration::from_secs(1));
+        transit.advance(round, Duration::from_micros(600));
 
         assert!(!transit.completed());
         assert!(!transit.corrupted());
 
         let round = round.next();
-        transit.advance(round, Duration::from_secs(1));
+        transit.advance(round, Duration::from_micros(600));
 
         assert!(transit.completed());
         assert!(!transit.corrupted());

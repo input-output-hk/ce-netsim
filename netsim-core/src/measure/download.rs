@@ -67,7 +67,7 @@ impl Download {
     }
 
     /// get the configured bandwidth for this component
-    pub fn channel_bandwidth(&self) -> Bandwidth {
+    pub fn channel_bandwidth(&self) -> &Bandwidth {
         self.channel.bandwidth()
     }
 
@@ -95,7 +95,8 @@ mod tests {
     use super::*;
     use crate::measure::Bandwidth;
 
-    const BW: Bandwidth = Bandwidth::new(1_024, Duration::from_secs(1));
+    // 1 byte/µs = 1_000_000 bytes/sec (minimum representable bandwidth)
+    const BW: Bandwidth = Bandwidth::new(1, Duration::from_micros(1));
 
     #[test]
     fn create() {
@@ -157,5 +158,68 @@ mod tests {
 
         download.process(1_042);
         assert!(download.corrupted());
+    }
+
+    #[test]
+    fn process_zero_does_not_corrupt() {
+        let gauge = Arc::new(Gauge::new());
+        let channel = Arc::new(CongestionChannel::new(BW));
+        let mut download = Download::new(channel, gauge);
+        let round = Round::ZERO.next();
+
+        download.update_capacity(round, Duration::from_secs(1));
+        download.process(0);
+        assert!(!download.corrupted());
+        assert_eq!(download.bytes_in_buffer(), 0);
+    }
+
+    #[test]
+    fn corrupted_flag_is_sticky() {
+        let gauge = Arc::new(Gauge::new());
+        let channel = Arc::new(CongestionChannel::new(BW));
+        let mut download = Download::new(channel, gauge);
+
+        // No capacity → corrupted
+        download.process(100);
+        assert!(download.corrupted());
+
+        // Even after updating capacity and processing 0, flag stays set
+        let round = Round::ZERO.next();
+        download.update_capacity(round, Duration::from_secs(1));
+        download.process(0);
+        assert!(download.corrupted());
+    }
+
+    #[test]
+    fn corrupted_both_channel_and_buffer_limited() {
+        // Channel capacity 50 bytes (1 byte/µs × 50µs), buffer capacity 30 bytes
+        let gauge = Arc::new(Gauge::with_capacity(30));
+        let channel = Arc::new(CongestionChannel::new(BW));
+        let mut download = Download::new(channel, gauge);
+        let round = Round::ZERO.next();
+
+        download.update_capacity(round, Duration::from_micros(50));
+        download.process(100); // 100 > 50 (channel) and 50 > 30 (buffer)
+
+        assert!(download.corrupted());
+        assert_eq!(download.bytes_in_buffer(), 30);
+    }
+
+    #[test]
+    fn drop_frees_bytes_in_buffer() {
+        let gauge = Arc::new(Gauge::new());
+        let channel = Arc::new(CongestionChannel::new(BW));
+        let mut download = Download::new(channel, gauge.clone());
+        let round = Round::ZERO.next();
+
+        // Pre-reserve some bytes so baseline is non-zero
+        gauge.reserve(100);
+        download.update_capacity(round, Duration::from_secs(1));
+        download.process(200);
+
+        assert_eq!(download.bytes_in_buffer(), 200);
+        std::mem::drop(download);
+        // Drop must free the 200 bytes that were in the download buffer
+        assert_eq!(gauge.used_capacity(), 100);
     }
 }

@@ -41,8 +41,8 @@ fn main() {
     let sink = Sink {
         socket: context
             .open()
-            .set_download_bandwidth(cmd.bandwidth_down)
-            .set_upload_bandwidth(cmd.bandwidth_up)
+            .set_download_bandwidth(cmd.bandwidth_down.clone())
+            .set_upload_bandwidth(cmd.bandwidth_up.clone())
             .build()
             .unwrap(),
         latency: cmd.latency,
@@ -53,8 +53,8 @@ fn main() {
         let tap = Tap {
             socket: context
                 .open()
-                .set_download_bandwidth(cmd.bandwidth_down)
-                .set_upload_bandwidth(cmd.bandwidth_up)
+                .set_download_bandwidth(cmd.bandwidth_down.clone())
+                .set_upload_bandwidth(cmd.bandwidth_up.clone())
                 .build()
                 .unwrap(),
             sink_id: sink.socket.id(),

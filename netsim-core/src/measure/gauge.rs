@@ -335,4 +335,45 @@ mod tests {
         let freed = gauge.free(0);
         assert_eq!(freed, 0);
     }
+
+    #[test]
+    fn zero_capacity_gauge_reserves_nothing() {
+        let gauge = Gauge::with_capacity(0);
+        assert_eq!(gauge.reserve(1), 0);
+        assert_eq!(gauge.reserve(1_000), 0);
+        assert_eq!(gauge.used_capacity(), 0);
+    }
+
+    #[test]
+    fn set_maximum_capacity_limits_future_reserves() {
+        let gauge = Gauge::new(); // u64::MAX capacity
+        gauge.reserve(500);
+        assert_eq!(gauge.used_capacity(), 500);
+
+        // Shrink max to 600; 500 already used → only 100 more reservable
+        gauge.set_maximum_capacity(600);
+        let reserved = gauge.reserve(200);
+        assert_eq!(reserved, 100);
+        assert_eq!(gauge.used_capacity(), 600);
+    }
+
+    #[test]
+    fn free_more_than_used_caps_at_zero() {
+        let gauge = Gauge::with_capacity(100);
+        gauge.reserve(30);
+        // Free more than reserved — should only free what's used
+        let freed = gauge.free(1_000);
+        assert_eq!(freed, 30);
+        assert_eq!(gauge.used_capacity(), 0);
+    }
+
+    #[test]
+    fn reserve_and_free_zero_are_noops() {
+        let gauge = Gauge::with_capacity(100);
+        gauge.reserve(50);
+
+        assert_eq!(gauge.reserve(0), 0);
+        assert_eq!(gauge.free(0), 0);
+        assert_eq!(gauge.used_capacity(), 50); // unchanged
+    }
 }

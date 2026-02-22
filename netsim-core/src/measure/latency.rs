@@ -143,4 +143,53 @@ mod tests {
             "1µs".parse().unwrap()
         );
     }
+
+    #[test]
+    fn zero_latency() {
+        assert_eq!(Latency::ZERO.into_duration(), Duration::ZERO);
+        assert_eq!(Latency::new(Duration::ZERO).into_duration(), Duration::ZERO);
+    }
+
+    #[test]
+    fn sub_microsecond_truncates_to_zero() {
+        // 999ns < 1µs → truncated to 0
+        assert_eq!(
+            Latency::new(Duration::from_nanos(999)).into_duration(),
+            Duration::ZERO
+        );
+        // 1000ns = 1µs exactly
+        assert_eq!(
+            Latency::new(Duration::from_nanos(1_000)).into_duration(),
+            Duration::from_micros(1)
+        );
+    }
+
+    #[test]
+    fn from_trait_impls() {
+        let dur = Duration::from_millis(42);
+        let lat = Latency::new(dur);
+
+        // From<Latency> for Duration
+        let back: Duration = lat.into();
+        assert_eq!(back, dur);
+
+        // From<Duration> for Latency
+        let lat2: Latency = dur.into();
+        assert_eq!(lat2, lat);
+    }
+
+    #[test]
+    fn parse_invalid_strings() {
+        assert!("150".parse::<Latency>().is_err());
+        assert!("abc".parse::<Latency>().is_err());
+        assert!("".parse::<Latency>().is_err());
+    }
+
+    #[test]
+    fn display_round_trip() {
+        let original = Latency::new(Duration::from_millis(150));
+        let s = original.to_string();
+        let parsed: Latency = s.parse().unwrap();
+        assert_eq!(original, parsed);
+    }
 }

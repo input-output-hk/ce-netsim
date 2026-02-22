@@ -73,7 +73,7 @@ impl Upload {
     }
 
     /// get the configured bandwidth for this component
-    pub fn channel_bandwidth(&self) -> Bandwidth {
+    pub fn channel_bandwidth(&self) -> &Bandwidth {
         self.channel.bandwidth()
     }
 
@@ -101,7 +101,8 @@ mod tests {
     use super::*;
     use crate::measure::Bandwidth;
 
-    const BW: Bandwidth = Bandwidth::new(1_024, Duration::from_secs(1));
+    // 1 byte/µs = 1_000_000 bytes/sec (minimum representable bandwidth)
+    const BW: Bandwidth = Bandwidth::new(1, Duration::from_micros(1));
 
     #[test]
     fn create() {
@@ -141,33 +142,90 @@ mod tests {
         assert_eq!(upload.bytes_in_buffer(), 0);
         assert_eq!(upload.channel.capacity(), 0);
 
-        let sent = upload.send(1_042);
+        // send 1_500_000 bytes; bandwidth allows 1_000_000 per second
+        let sent = upload.send(1_500_000);
         assert!(sent);
 
-        assert_eq!(upload.bytes_in_buffer(), 1_042);
+        assert_eq!(upload.bytes_in_buffer(), 1_500_000);
         assert_eq!(upload.channel.capacity(), 0);
 
         upload.update_capacity(round, Duration::from_secs(1));
 
         let processed = upload.process();
-        assert_eq!(processed, 1_024);
-        assert_eq!(upload.bytes_in_buffer(), 18);
+        assert_eq!(processed, 1_000_000);
+        assert_eq!(upload.bytes_in_buffer(), 500_000);
 
-        // if we are updating the capacity with the same round
-        // we aren't really updating it and we can't process more
-        // data.
+        // same round — capacity is exhausted, nothing more processed
         upload.update_capacity(round, Duration::from_secs(1));
 
         let processed = upload.process();
         assert_eq!(processed, 0);
-        assert_eq!(upload.bytes_in_buffer(), 18);
+        assert_eq!(upload.bytes_in_buffer(), 500_000);
 
-        // only if we move to a subsequent round we do get more
-        // capacity
+        // advance to next round — fresh 1_000_000-byte capacity
         upload.update_capacity(round.next(), Duration::from_secs(1));
 
         let processed = upload.process();
-        assert_eq!(processed, 18);
+        assert_eq!(processed, 500_000);
         assert_eq!(upload.bytes_in_buffer(), 0);
+    }
+
+    #[test]
+    fn send_zero_succeeds_without_touching_buffer() {
+        let gauge = Arc::new(Gauge::new());
+        let channel = Arc::new(CongestionChannel::new(BW));
+        let mut upload = Upload::new(gauge.clone(), channel);
+
+        assert!(upload.send(0));
+        assert_eq!(upload.bytes_in_buffer(), 0);
+        assert_eq!(gauge.used_capacity(), 0);
+    }
+
+    #[test]
+    fn send_fails_when_buffer_full_and_leaves_no_leak() {
+        // Buffer with capacity 50
+        let gauge = Arc::new(Gauge::with_capacity(50));
+        let channel = Arc::new(CongestionChannel::new(BW));
+        let mut upload = Upload::new(gauge.clone(), channel);
+
+        // Fill the buffer
+        assert!(upload.send(50));
+        assert_eq!(gauge.used_capacity(), 50);
+
+        // A second upload sharing the same gauge cannot send any more
+        let mut upload2 = Upload::new(gauge.clone(), Arc::new(CongestionChannel::new(BW)));
+        assert!(!upload2.send(1));
+        assert_eq!(upload2.bytes_in_buffer(), 0);
+        assert_eq!(gauge.used_capacity(), 50); // unchanged
+    }
+
+    #[test]
+    fn process_with_empty_buffer_returns_zero() {
+        let gauge = Arc::new(Gauge::new());
+        let channel = Arc::new(CongestionChannel::new(BW));
+        let mut upload = Upload::new(gauge, channel);
+        let round = Round::ZERO.next();
+
+        upload.update_capacity(round, Duration::from_secs(1));
+        let processed = upload.process();
+        assert_eq!(processed, 0);
+    }
+
+    #[test]
+    fn drop_frees_only_remaining_in_buffer() {
+        let gauge = Arc::new(Gauge::new());
+        let channel = Arc::new(CongestionChannel::new(BW));
+        let mut upload = Upload::new(gauge.clone(), channel);
+        let round = Round::ZERO.next();
+
+        upload.send(1_500_000);
+        upload.update_capacity(round, Duration::from_secs(1));
+        upload.process(); // processes 1_000_000, leaves 500_000 in buffer
+
+        assert_eq!(upload.bytes_in_buffer(), 500_000);
+        let used_before_drop = gauge.used_capacity();
+        std::mem::drop(upload);
+        // Drop must free exactly the remaining 500_000
+        assert_eq!(gauge.used_capacity(), used_before_drop - 500_000);
     }
 }

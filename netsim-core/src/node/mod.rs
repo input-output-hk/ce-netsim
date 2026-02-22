@@ -75,11 +75,11 @@ impl<T> Node<T> {
         self.inbound_buffer.maximum_capacity()
     }
 
-    pub fn upload_bandwidth(&self) -> Bandwidth {
+    pub fn upload_bandwidth(&self) -> &Bandwidth {
         self.outbound_channel.bandwidth()
     }
 
-    pub fn download_bandwidth(&self) -> Bandwidth {
+    pub fn download_bandwidth(&self) -> &Bandwidth {
         self.inbound_channel.bandwidth()
     }
 

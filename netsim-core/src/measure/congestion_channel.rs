@@ -1,10 +1,7 @@
 use super::{Bandwidth, Gauge};
 use crate::network::Round;
 use std::{
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        RwLock,
-    },
+    sync::atomic::{AtomicU64, Ordering},
     time::Duration,
 };
 
@@ -25,16 +22,9 @@ use std::{
 /// will set the [`Bandwidth`] to [`Bandwidth::MAX`] i.e. it will allocate
 /// as much bandwidth as possible and no data congestion should be perceived.
 ///
-/// # Thread Safety
-///
-/// The [`CongestionChannel`] is meant to be [`Send`] and [`Sync`]. it should
-/// be possible to have concurrent threads utilise the same congestion channel
-/// because we are using a [`RwLock`] for the configured [`Bandwidth`] and
-/// the remaining [`Gauge`] is already containing atomic fields.
-///
 #[derive(Debug, Default)]
 pub struct CongestionChannel {
-    bandwidth: RwLock<Bandwidth>,
+    bandwidth: Bandwidth,
 
     // atomic
     round: AtomicU64,
@@ -48,7 +38,7 @@ impl CongestionChannel {
     ///
     pub fn new(bandwidth: Bandwidth) -> Self {
         Self {
-            bandwidth: RwLock::new(bandwidth),
+            bandwidth,
             round: AtomicU64::new(0),
             gauge: Gauge::with_capacity(0),
         }
@@ -56,21 +46,12 @@ impl CongestionChannel {
 
     #[inline]
     pub fn set_bandwidth(&self, bandwidth: Bandwidth) {
-        match self.bandwidth.try_write() {
-            Ok(mut bw) => *bw = bandwidth,
-            Err(error) => {
-                panic!("failed to set bandwidth: {error}")
-            }
-        }
+        self.bandwidth.set(bandwidth);
     }
 
-    pub fn bandwidth(&self) -> Bandwidth {
-        match self.bandwidth.try_read() {
-            Ok(bw) => *bw,
-            Err(error) => {
-                panic!("failed to read bandwidth: {error}")
-            }
-        }
+    #[inline]
+    pub fn bandwidth(&self) -> &Bandwidth {
+        &self.bandwidth
     }
 
     #[inline]
@@ -131,12 +112,13 @@ impl CongestionChannel {
 mod tests {
     use super::*;
 
-    const BD_1KBPS: Bandwidth = Bandwidth::new(1_024, Duration::from_secs(1));
+    // 1 byte/µs = 1_000_000 bytes/sec (minimum representable bandwidth)
+    const BD_1MBPS: Bandwidth = Bandwidth::new(1, Duration::from_micros(1));
 
     /// test that the initial capacity is always 0
     #[test]
     fn initial_capacity() {
-        let cc = CongestionChannel::new(BD_1KBPS);
+        let cc = CongestionChannel::new(BD_1MBPS);
 
         assert_eq!(cc.capacity(), 0);
     }
@@ -148,7 +130,7 @@ mod tests {
     ///
     #[test]
     fn update_capacity_round_zero() {
-        let cc = CongestionChannel::new(BD_1KBPS);
+        let cc = CongestionChannel::new(BD_1MBPS);
         let round = Round::new();
 
         let updated = cc.update_capacity(round, Duration::from_secs(1));
@@ -159,12 +141,12 @@ mod tests {
 
     #[test]
     fn update_capacity_same_round() {
-        let cc = CongestionChannel::new(BD_1KBPS);
+        let cc = CongestionChannel::new(BD_1MBPS);
         let round = Round::new().next();
 
         let updated = cc.update_capacity(round, Duration::from_secs(1));
         assert!(updated);
-        assert_eq!(cc.capacity(), 1_024);
+        assert_eq!(cc.capacity(), 1_000_000);
 
         let updated = cc.update_capacity(round, Duration::from_secs(1));
         assert!(!updated);
@@ -172,15 +154,73 @@ mod tests {
 
     #[test]
     fn update_capacity_always_latest() {
-        let cc = CongestionChannel::new(BD_1KBPS);
+        let cc = CongestionChannel::new(BD_1MBPS);
         let round = Round::new().next();
 
         let updated = cc.update_capacity(round, Duration::from_secs(100));
         assert!(updated);
-        assert_eq!(cc.capacity(), 102_400);
+        assert_eq!(cc.capacity(), 100_000_000);
 
         let updated = cc.update_capacity(round.next(), Duration::from_secs(1));
         assert!(updated);
-        assert_eq!(cc.capacity(), 1_024);
+        assert_eq!(cc.capacity(), 1_000_000);
+    }
+
+    #[test]
+    fn update_capacity_zero_duration_gives_zero_capacity() {
+        let cc = CongestionChannel::new(BD_1MBPS);
+        let round = Round::new().next();
+
+        let updated = cc.update_capacity(round, Duration::ZERO);
+        assert!(updated);
+        assert_eq!(cc.capacity(), 0);
+    }
+
+    #[test]
+    fn set_bandwidth_takes_effect_on_next_round() {
+        let cc = CongestionChannel::new(BD_1MBPS);
+        let round = Round::new().next();
+
+        // First round with 1 byte/µs → 1_000_000 bytes/s
+        cc.update_capacity(round, Duration::from_secs(1));
+        assert_eq!(cc.capacity(), 1_000_000);
+
+        // Change to 2 bytes/µs
+        cc.set_bandwidth(Bandwidth::new(2, Duration::from_micros(1)));
+
+        // Next round: new bandwidth applies
+        let updated = cc.update_capacity(round.next(), Duration::from_secs(1));
+        assert!(updated);
+        assert_eq!(cc.capacity(), 2_000_000);
+    }
+
+    #[test]
+    fn reserve_reduces_capacity() {
+        let cc = CongestionChannel::new(BD_1MBPS);
+        let round = Round::new().next();
+
+        cc.update_capacity(round, Duration::from_secs(1));
+        assert_eq!(cc.capacity(), 1_000_000);
+
+        let reserved = cc.reserve(400_000);
+        assert_eq!(reserved, 400_000);
+        assert_eq!(cc.capacity(), 600_000);
+    }
+
+    #[test]
+    fn round_regression_does_not_update() {
+        let cc = CongestionChannel::new(BD_1MBPS);
+        let round = Round::new().next().next(); // round 2
+
+        cc.update_capacity(round, Duration::from_secs(1));
+        assert_eq!(cc.capacity(), 1_000_000);
+
+        // Consume some capacity
+        cc.reserve(200_000);
+
+        // Attempt with same round again — should not restore capacity
+        let updated = cc.update_capacity(round, Duration::from_secs(100));
+        assert!(!updated);
+        assert_eq!(cc.capacity(), 800_000); // still reduced
     }
 }

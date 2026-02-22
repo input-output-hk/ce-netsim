@@ -1,9 +1,19 @@
 use anyhow::{bail, ensure};
 use logos::{Lexer, Logos};
-use std::{fmt, str::FromStr, time::Duration};
+use std::{
+    fmt,
+    str::FromStr,
+    sync::atomic::{AtomicU64, Ordering},
+    time::Duration,
+};
 
 /// The [`Bandwidth`] that can be used to determine how much
 /// data can be processed during a certain [`Duration`].
+///
+/// Internally stores bytes per microsecond as an [`AtomicU64`], enabling
+/// lock-free reads and writes. The conversion from the `(data, per)` pair
+/// happens at construction time and is lossy for bandwidths below 1 byte/µs
+/// (i.e. slower than 1 Mbps); such rates are rounded down to 0 bytes/µs.
 ///
 /// # Default
 ///
@@ -15,10 +25,10 @@ use std::{fmt, str::FromStr, time::Duration};
 /// ```
 /// # use netsim_core::measure::Bandwidth;
 /// # use std::time::Duration;
-/// // create a bandwidth of `1mbps`
+/// // create a bandwidth of `2mbps`
 /// let bw = Bandwidth::new(
-///     2_000,
-///     Duration::from_millis(1),
+///     2_000_000,
+///     Duration::from_secs(1),
 /// );
 /// // get the capacity allowed by the bandwidth
 /// // i.e. the number of bytes that can be transmitted
@@ -27,109 +37,113 @@ use std::{fmt, str::FromStr, time::Duration};
 /// # assert_eq!(capacity, 2);
 /// ```
 ///
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Bandwidth {
-    /// bytes that can be processed per _duration_
-    data: u64,
-    /// the duration during which we can process _data_
-    per: Duration,
-}
+pub struct Bandwidth(AtomicU64);
 
 impl Bandwidth {
     /// the maximum bandwidth available
     ///
-    /// # note
-    ///
-    /// technically this isn't really the maximum bandwidth. This is still
-    /// way too unrealistic bandwidth and will allow to pretend the network
-    /// has an infinite bandwidth as it is.
-    ///
-    /// The actual maximum [Bandwidth] is:
-    ///
-    /// ```
-    /// # use netsim_core::measure::Bandwidth;
-    /// # use std::time::Duration;
-    /// let real_max = Bandwidth::new(
-    ///     u64::MAX,
-    ///     Duration::from_nanos(1),
-    /// );
-    /// ```
+    /// Stores [`u64::MAX`] bytes per microsecond, which is effectively
+    /// unlimited for any realistic simulation.
     ///
     pub const MAX: Self = Self::new(u64::MAX, Duration::from_secs(1));
 
     /// create a new [`Bandwidth`]
     ///
-    /// * data: the number of bytes that can be processed for the given duration
-    /// * duration: the duration during which the data can be processed
+    /// * `data`: the number of bytes that can be processed for the given duration
+    /// * `per`: the duration during which the data can be processed
     ///
-    /// This allows to create different kind of [`Bandwidth`] depending on needs
-    /// and requirements for accuracy:
+    /// The `(data, per)` pair is converted to bytes per microsecond at
+    /// construction time. Bandwidths below 1 byte/µs (< ~1 Mbps) are stored
+    /// as 0 bytes/µs.
     ///
     /// ```
     /// # use netsim_core::measure::Bandwidth;
     /// # use std::time::Duration;
     /// // create a bandwidth of `200mbps`
-    /// let bw1 = Bandwidth::new(
+    /// let bw = Bandwidth::new(
     ///     200 * 1_024 * 1_024, // (200 MB)
     ///     Duration::from_secs(1),
     /// );
-    /// // create a bandwidth of `300mb per 1.5s` or `200mbps`
-    /// let bw2 = Bandwidth::new(
-    ///     300 * 1_024 * 1_024, // (300 MB)
-    ///     Duration::from_secs(1) + Duration::from_millis(500),
-    /// );
-    /// # assert_eq!(
-    /// #   bw1.capacity(Duration::from_secs(1)),
-    /// #   bw2.capacity(Duration::from_secs(1)),
-    /// # )
     /// ```
     pub const fn new(data: u64, per: Duration) -> Self {
-        Self { data, per }
+        let per_us = per.as_micros() as u64;
+        let bpu = if per_us == 0 { u64::MAX } else { data / per_us };
+        Self(AtomicU64::new(bpu))
     }
 
-    /// the base time of the bandwidth
-    ///
-    /// Currently the default is to be in bits per seconds so that
-    /// the time_base is always 1s. However for increased granularity
-    /// we will want to allow things like `bytes per minutes` or
-    /// even (1024MiB per 1.2 seconds).
-    ///
-    pub fn time_base(&self) -> Duration {
-        self.per
-    }
-
-    /// return the data base used for the bandwith
-    ///
-    /// i.e. this is how many bytes per [`Self::time_base`]
-    pub fn data_base(&self) -> u64 {
-        self.data
-    }
-
-    /// returns how many bytes can be transfered during the
-    /// elapsed time
-    ///
-    /// this function has a micro seconds precision to compute
-    /// the data capacity for a given duration
+    /// Returns how many bytes can be transferred during `elapsed`.
     ///
     /// ```
     /// # use netsim_core::measure::Bandwidth;
     /// # use std::time::Duration;
-    /// // create a bandwidth of `1mbps`
-    /// let bw = Bandwidth::new(
-    ///     1,
-    ///     Duration::from_micros(1),
-    /// );
+    /// // 2 bytes/µs → 2_000_000 bytes in 1 second
+    /// let bw = Bandwidth::new(2_000_000, Duration::from_secs(1));
     /// let capacity = bw.capacity(Duration::from_secs(1));
-    /// # assert_eq!(capacity, 1_000_000);
+    /// # assert_eq!(capacity, 2_000_000);
     /// ```
     pub fn capacity(&self, elapsed: Duration) -> u64 {
-        let elapsed = elapsed.as_micros();
-        let time_base = self.time_base().as_micros();
-        let data_base = self.data_base() as u128;
+        let bpu = self.0.load(Ordering::Relaxed) as u128;
+        let us = elapsed.as_micros();
+        bpu.saturating_mul(us).min(u64::MAX as u128) as u64
+    }
 
-        data_base.saturating_mul(elapsed).saturating_div(time_base) as u64
+    /// Returns the raw bytes-per-microsecond value.
+    pub fn bytes_per_us(&self) -> u64 {
+        self.0.load(Ordering::Relaxed)
+    }
+
+    /// Overwrites the bandwidth with a new `(data, per)` pair.
+    pub fn set(&self, this: Bandwidth) {
+        let bpu = this.0.load(Ordering::Relaxed);
+        self.0.store(bpu, Ordering::Relaxed);
     }
 }
+
+// --- Manual trait impls needed because AtomicU64 doesn't derive them ---
+
+impl Clone for Bandwidth {
+    fn clone(&self) -> Self {
+        Self(AtomicU64::new(self.0.load(Ordering::Relaxed)))
+    }
+}
+
+impl PartialEq for Bandwidth {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.load(Ordering::Relaxed) == other.0.load(Ordering::Relaxed)
+    }
+}
+
+impl Eq for Bandwidth {}
+
+impl PartialOrd for Bandwidth {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Bandwidth {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0
+            .load(Ordering::Relaxed)
+            .cmp(&other.0.load(Ordering::Relaxed))
+    }
+}
+
+impl std::hash::Hash for Bandwidth {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.load(Ordering::Relaxed).hash(state);
+    }
+}
+
+impl fmt::Debug for Bandwidth {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Bandwidth")
+            .field(&self.0.load(Ordering::Relaxed))
+            .finish()
+    }
+}
+
+// --- Display ---
 
 const K: u64 = 1_024;
 const M: u64 = 1_024 * 1_024;
@@ -159,6 +173,8 @@ impl fmt::Display for Bandwidth {
         }
     }
 }
+
+// --- FromStr ---
 
 #[derive(Logos, Debug, PartialEq)]
 #[logos(skip r"[ \t\n\f]+")] // Ignore this regex pattern between tokens
@@ -234,45 +250,110 @@ mod tests {
 
     #[test]
     fn print_bandwidth() {
+        // Values must be exact multiples of 1_000_000 (bytes/µs granularity).
+        // Bandwidth::new(v, 1s) stores v / 1_000_000 bytes/µs; Display shows
+        // that back as (v / 1_000_000) * 1_000_000 bytes/s.
         macro_rules! assert_bandwidth {
-            (($bandwidth:expr) == $string:literal) => {
+            (($bpu:expr) == $string:literal) => {
+                // bpu = bytes per microsecond; construct via 1µs duration
                 assert_eq!(
-                    Bandwidth::new($bandwidth, Duration::from_secs(1)).to_string(),
+                    Bandwidth::new($bpu, Duration::from_micros(1)).to_string(),
                     $string
                 );
             };
         }
 
         assert_bandwidth!((0) == "0bps");
-        assert_bandwidth!((42) == "42bps");
-        assert_bandwidth!((42 * K) == "42kbps");
-        assert_bandwidth!((42 * M) == "42mbps");
-        assert_bandwidth!((42 * G) == "42gbps");
-
-        assert_bandwidth!((12_345) == "12345bps");
-        assert_bandwidth!((12_345 * K) == "12345kbps");
-        assert_bandwidth!((12_345 * M) == "12345mbps");
+        // 1 byte/µs = 1_000_000 bytes/s; 1_000_000 / K = 976 kbps (non-zero remainder), so bps
+        assert_bandwidth!((1) == "1000000bps");
+        // M bytes/µs = M * 1_000_000 bytes/s; divided by M = 1_000_000 mbps
+        assert_bandwidth!((1 * M) == "1000000mbps");
+        // G bytes/µs = G * 1_000_000 bytes/s; divided by G = 1_000_000 gbps
+        assert_bandwidth!((1 * G) == "1000000gbps");
     }
 
     #[test]
-    fn bandwidth_capacity_1bps() {
-        let bandwidth = Bandwidth::new(1, Duration::from_secs(1));
+    fn bandwidth_capacity_1_byte_per_us() {
+        // 1 byte/µs = 1_000_000 bytes/s
+        let bandwidth = Bandwidth::new(1, Duration::from_micros(1));
 
-        assert_eq!(bandwidth.capacity(Duration::from_micros(100)), 0);
-        assert_eq!(bandwidth.capacity(Duration::from_millis(1)), 0);
-        assert_eq!(bandwidth.capacity(Duration::from_secs(1)), 1);
-        assert_eq!(bandwidth.capacity(Duration::from_secs(100)), 100);
+        assert_eq!(bandwidth.capacity(Duration::from_micros(1)), 1);
+        assert_eq!(bandwidth.capacity(Duration::from_millis(1)), 1_000);
+        assert_eq!(bandwidth.capacity(Duration::from_secs(1)), 1_000_000);
+        assert_eq!(bandwidth.capacity(Duration::from_secs(100)), 100_000_000);
     }
 
-    // 12_000 bytes every  2.1 s
-    //     12 bytes every  2.1 ms (2_100 μs)
     #[test]
-    fn bandwidth_capacity_12kbp2s100ms() {
-        let bandwidth = Bandwidth::new(12_000, Duration::from_secs(2) + Duration::from_millis(100));
+    fn bandwidth_capacity_10_bytes_per_us() {
+        // 10 bytes/µs = 10_000_000 bytes/s
+        let bandwidth = Bandwidth::new(10, Duration::from_micros(1));
 
-        assert_eq!(bandwidth.capacity(Duration::from_micros(100)), 0);
-        assert_eq!(bandwidth.capacity(Duration::from_millis(1)), 5);
-        assert_eq!(bandwidth.capacity(Duration::from_secs(1)), 5714);
-        assert_eq!(bandwidth.capacity(Duration::from_secs(100)), 571428);
+        assert_eq!(bandwidth.capacity(Duration::from_micros(1)), 10);
+        assert_eq!(bandwidth.capacity(Duration::from_millis(1)), 10_000);
+        assert_eq!(bandwidth.capacity(Duration::from_secs(1)), 10_000_000);
+    }
+
+    #[test]
+    fn bandwidth_capacity_non_standard_duration() {
+        // 2_100 bytes every 2_100 µs = 1 byte/µs
+        let bandwidth = Bandwidth::new(2_100, Duration::from_micros(2_100));
+
+        assert_eq!(bandwidth.capacity(Duration::from_micros(1)), 1);
+        assert_eq!(bandwidth.capacity(Duration::from_millis(1)), 1_000);
+        assert_eq!(bandwidth.capacity(Duration::from_secs(1)), 1_000_000);
+    }
+
+    #[test]
+    fn zero_duration_gives_max_bandwidth() {
+        // per_us == 0 → constructor stores u64::MAX bytes/µs
+        let bw = Bandwidth::new(100, Duration::ZERO);
+        assert_eq!(bw.bytes_per_us(), u64::MAX);
+    }
+
+    #[test]
+    fn zero_bandwidth_capacity_always_zero() {
+        let bw = Bandwidth::new(0, Duration::from_secs(1));
+        assert_eq!(bw.capacity(Duration::from_micros(1)), 0);
+        assert_eq!(bw.capacity(Duration::from_secs(1)), 0);
+    }
+
+    #[test]
+    fn max_bandwidth_saturates_to_u64_max() {
+        // Bandwidth::MAX = new(u64::MAX, 1s) = u64::MAX / 1_000_000 bytes/µs.
+        // With a large enough duration the product overflows u128 → saturates to u64::MAX.
+        // 1 second = 1_000_000 µs; bpu * 1_000_000 = (u64::MAX / 1_000_000) * 1_000_000
+        // which is close to but not over u64::MAX, so we need a longer duration.
+        assert_eq!(Bandwidth::MAX.capacity(Duration::from_secs(1_000_000)), u64::MAX);
+    }
+
+    #[test]
+    fn parse_invalid_strings() {
+        assert!("42".parse::<Bandwidth>().is_err());            // no unit
+        assert!("mbps".parse::<Bandwidth>().is_err());          // no number
+        assert!("".parse::<Bandwidth>().is_err());              // empty
+        assert!("42mbps extra".parse::<Bandwidth>().is_err());  // trailing token
+    }
+
+    #[test]
+    fn clone_is_independent() {
+        let original = Bandwidth::new(5, Duration::from_micros(1));
+        let clone = original.clone();
+        // Mutate original via set()
+        original.set(Bandwidth::new(10, Duration::from_micros(1)));
+        // Clone must be unchanged
+        assert_eq!(clone.bytes_per_us(), 5);
+        assert_eq!(original.bytes_per_us(), 10);
+    }
+
+    #[test]
+    fn ordering_and_eq() {
+        let low  = Bandwidth::new(1, Duration::from_micros(1));
+        let high = Bandwidth::new(5, Duration::from_micros(1));
+        let low2 = Bandwidth::new(1, Duration::from_micros(1));
+
+        assert!(low < high);
+        assert!(high > low);
+        assert_eq!(low, low2);
+        assert_ne!(low, high);
     }
 }

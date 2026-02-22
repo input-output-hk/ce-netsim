@@ -85,6 +85,7 @@ impl FromStr for Duration {
             durations.push(duration);
         }
 
+        ensure!(!durations.is_empty(), "Cannot parse empty string as duration");
         Ok(Self(durations.into_iter().sum()))
     }
 }

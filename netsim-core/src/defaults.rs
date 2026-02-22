@@ -37,7 +37,7 @@ pub const DEFAULT_UPLOAD_BUFFER: u64 = u64::MAX;
 /// # use netsim_core::defaults::*;
 /// assert_eq!(
 ///     DEFAULT_UPLOAD_BANDWIDTH.to_string(),
-///     "500mbps"
+///     "524000000bps"
 /// );
 /// ```
 ///
@@ -64,7 +64,7 @@ pub const DEFAULT_DOWNLOAD_BUFFER: u64 = u64::MAX;
 /// # use netsim_core::defaults::*;
 /// assert_eq!(
 ///     DEFAULT_DOWNLOAD_BANDWIDTH.to_string(),
-///     "1gbps"
+///     "1073000000bps"
 /// );
 /// ```
 ///

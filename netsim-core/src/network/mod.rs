@@ -101,10 +101,19 @@ impl<T> LinkBuilder<'_, T> {
 
     /// Commit the link configuration to the network.
     pub fn apply(self) {
-        let Self { a, b, latency, bandwidth, packet_loss, network } = self;
+        let Self {
+            a,
+            b,
+            latency,
+            bandwidth,
+            packet_loss,
+            network,
+        } = self;
         let id = LinkId::new((a, b));
         let channel = Arc::new(CongestionChannel::new(bandwidth));
-        network.links.insert(id, Link::new_with_loss(latency, channel, packet_loss));
+        network
+            .links
+            .insert(id, Link::new_with_loss(latency, channel, packet_loss));
     }
 }
 
@@ -281,7 +290,7 @@ where
 
         // Check packet loss before routing (avoids building the full route for dropped packets)
         let edge = LinkId::new((from, to));
-        if let Some(link) = self.links.get(&edge) {
+        if let Some(link) = self.links.get_mut(&edge) {
             if link.should_drop_packet() {
                 return Ok(());
             }
@@ -312,8 +321,8 @@ where
                 upload_buffer_max: node.upload_buffer_max(),
                 download_buffer_used: node.download_buffer_used(),
                 download_buffer_max: node.download_buffer_max(),
-                upload_bandwidth: node.upload_bandwidth(),
-                download_bandwidth: node.download_bandwidth(),
+                upload_bandwidth: node.upload_bandwidth().clone(),
+                download_bandwidth: node.download_bandwidth().clone(),
             })
             .collect();
 
@@ -323,7 +332,7 @@ where
             .map(|(id, link)| LinkStats {
                 id: *id,
                 latency: link.latency(),
-                bandwidth: link.bandwidth(),
+                bandwidth: link.bandwidth().clone(),
                 packet_loss: link.packet_loss(),
                 bytes_in_transit: link.bytes_in_transit(),
             })
