@@ -3,7 +3,7 @@ members = [
     "netsim-core",
     "netsim",
 ]
-resolver = "2"
+resolver = "3"
 
 [profile.release]
 lto = true
@@ -12,4 +12,3 @@ panic = "abort"
 
 [profile.bench]
 debug = false
-
