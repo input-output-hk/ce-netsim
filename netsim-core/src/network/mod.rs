@@ -353,15 +353,13 @@ where
         let mut cursor = self.transit.cursor_mut();
         loop {
             let remove;
-            {
-                let Some(transit) = cursor.as_mut() else {
-                    break;
-                };
+            let Some(transit) = cursor.as_mut() else {
+                break;
+            };
 
-                transit.advance(self.round, duration);
+            transit.advance(self.round, duration);
 
-                remove = transit.completed() || transit.corrupted();
-            }
+            remove = transit.completed() || transit.corrupted();
 
             if remove {
                 if let Some(transit) = cursor.remove_entry() {
