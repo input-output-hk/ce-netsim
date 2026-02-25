@@ -34,6 +34,27 @@ impl Download {
         }
     }
 
+    /// Returns `true` if any bytes of this packet were lost in transit to the
+    /// receiver's buffer.
+    ///
+    /// In a simulation this models two real-world UDP drop conditions:
+    ///
+    /// 1. **Bandwidth saturation** — the link or receiver's download channel did
+    ///    not have enough remaining capacity in this time step, so fewer bytes
+    ///    were accepted than were offered.
+    /// 2. **Buffer overflow** — the receiver's inbound buffer was full, so bytes
+    ///    that cleared the channel could not be stored and were silently dropped.
+    ///
+    /// Once set, the flag is **sticky**: it remains `true` for the lifetime of
+    /// this [`Download`] even if subsequent time steps have ample capacity.
+    /// This reflects the fact that a UDP datagram with missing bytes is
+    /// permanently unusable regardless of later network conditions.
+    ///
+    /// From a simulation user's perspective, a `Transit` whose download is
+    /// corrupted will be discarded rather than delivered — the `handle` closure
+    /// passed to [`Network::advance_with`] will not be called for that packet.
+    ///
+    /// [`Network::advance_with`]: crate::network::Network::advance_with
     pub fn corrupted(&self) -> bool {
         self.corrupted
     }
