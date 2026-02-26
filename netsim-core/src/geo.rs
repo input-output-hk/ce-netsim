@@ -196,7 +196,7 @@ fn distance_between_vincenty(point1: Location, point2: Location) -> Result<f64, 
 
 // return the distance in meter between point1 and point2
 fn distance_between_karney(point1: Location, point2: Location) -> Result<f64, GeoError> {
-    let distance = KarneyInverse::default()
+    let distance = KarneyInverse
         .calculate(point1, point2, Spheroid::earth())
         .ok_or(GeoError::NonFiniteComputation)?;
 
