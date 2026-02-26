@@ -33,6 +33,15 @@ pub enum GeoError {
 /// Latitude in e4 fixed-point format (`degrees * 10_000`).
 ///
 /// `48.8534°` is represented as `488_534`.
+///
+/// # Parsing and display
+///
+/// ```
+/// use netsim_core::geo::Latitude;
+///
+/// let latitude: Latitude = "48.8534".parse().unwrap();
+/// assert_eq!(latitude.to_string(), "48.8534º");
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Latitude(i32);
 
@@ -40,6 +49,9 @@ impl Latitude {
     pub const MIN_E4: i32 = -90_0000;
     pub const MAX_E4: i32 = 90_0000;
 
+    /// Creates a latitude from e4 fixed-point units.
+    ///
+    /// Valid range: `[-90_0000, 90_0000]`.
     pub fn try_from_e4(value: i32) -> Result<Self, GeoError> {
         if !(Self::MIN_E4..=Self::MAX_E4).contains(&value) {
             return Err(GeoError::InvalidLatitude { value });
@@ -48,6 +60,9 @@ impl Latitude {
         Ok(Self(value))
     }
 
+    /// Creates a latitude from decimal degrees.
+    ///
+    /// Values are rounded to the nearest e4 fixed-point unit.
     pub fn from_degrees(value: f64) -> Result<Self, GeoError> {
         if !value.is_finite() {
             return Err(GeoError::NonFiniteComputation);
@@ -88,6 +103,18 @@ impl FromStr for Latitude {
 /// Longitude in e4 fixed-point format (`degrees * 10_000`).
 ///
 /// `-122.4194°` is represented as `-1_224_194`.
+///
+/// # Eastern and western examples
+///
+/// ```
+/// use netsim_core::geo::Longitude;
+///
+/// let paris_east: Longitude = "2.3522".parse().unwrap();
+/// let san_francisco_west: Longitude = "-122.4194".parse().unwrap();
+///
+/// assert_eq!(paris_east.as_e4(), 23_522);
+/// assert_eq!(san_francisco_west.as_e4(), -1_224_194);
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Longitude(i32);
 
@@ -95,6 +122,9 @@ impl Longitude {
     pub const MIN_E4: i32 = -180_0000;
     pub const MAX_E4: i32 = 180_0000;
 
+    /// Creates a longitude from e4 fixed-point units.
+    ///
+    /// Valid range: `[-180_0000, 180_0000]`.
     pub fn try_from_e4(value: i32) -> Result<Self, GeoError> {
         if !(Self::MIN_E4..=Self::MAX_E4).contains(&value) {
             return Err(GeoError::InvalidLongitude { value });
@@ -103,6 +133,9 @@ impl Longitude {
         Ok(Self(value))
     }
 
+    /// Creates a longitude from decimal degrees.
+    ///
+    /// Values are rounded to the nearest e4 fixed-point unit.
     pub fn from_degrees(value: f64) -> Result<Self, GeoError> {
         if !value.is_finite() {
             return Err(GeoError::NonFiniteComputation);
@@ -141,6 +174,23 @@ impl FromStr for Longitude {
 }
 
 /// Location using validated latitude and longitude coordinates.
+///
+/// # Examples
+///
+/// ```
+/// use netsim_core::geo::Location;
+///
+/// // Eastern longitude (Paris)
+/// let paris = Location::from_degrees(48.8566, 2.3522).unwrap();
+/// // Western longitude (San Francisco)
+/// let san_francisco = Location::from_degrees(37.7749, -122.4194).unwrap();
+///
+/// assert!(paris.longitude.as_e4() > 0);
+/// assert!(san_francisco.longitude.as_e4() < 0);
+///
+/// let parsed: Location = "48.8566, 2.3522".parse().unwrap();
+/// assert_eq!(parsed.to_string(), "48.8566º, 2.3522º");
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Location {
     pub latitude: Latitude,
@@ -174,6 +224,41 @@ impl Location {
     }
 }
 
+impl fmt::Display for Location {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}, {}", self.latitude, self.longitude)
+    }
+}
+
+impl FromStr for Location {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut parts = s.split(',');
+        let latitude_raw = parts.next().unwrap_or_default();
+        let Some(longitude_raw) = parts.next() else {
+            return Err(anyhow!(
+                "Failed to parse Location: expected format `<latitude>, <longitude>`"
+            ));
+        };
+        ensure!(
+            parts.next().is_none(),
+            "Failed to parse Location: expected a single comma separator"
+        );
+
+        let latitude: Latitude = latitude_raw
+            .trim()
+            .parse()
+            .context("Failed to parse Location latitude")?;
+        let longitude: Longitude = longitude_raw
+            .trim()
+            .parse()
+            .context("Failed to parse Location longitude")?;
+
+        Ok(Self::new(latitude, longitude))
+    }
+}
+
 /// Additional end-to-end efficiency factor applied to fiber propagation speed.
 ///
 /// The effective speed used for latency computation is:
@@ -181,6 +266,18 @@ impl Location {
 /// `effective_speed = SPEED_OF_FIBER * path_efficiency.as_ratio()`
 ///
 /// where `path_efficiency` must be in `(0.0, 1.0]`.
+///
+/// # Parsing and display
+///
+/// ```
+/// use netsim_core::geo::PathEfficiency;
+///
+/// let a: PathEfficiency = "75%".parse().unwrap();
+/// let b: PathEfficiency = "0.75".parse().unwrap();
+///
+/// assert_eq!(a, b);
+/// assert_eq!(a.to_string(), "75%");
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub struct PathEfficiency(f64);
 
@@ -497,6 +594,21 @@ pub fn distance_between_locations_vincenty(p1: Location, p2: Location) -> Result
 }
 
 /// Distance between two locations using Karney inverse algorithm.
+///
+/// Returns the geodesic distance in meters.
+///
+/// # Example
+///
+/// ```
+/// use netsim_core::geo::{Location, distance_between_locations};
+///
+/// // Eastern longitude (Paris) -> western longitude (San Francisco)
+/// let paris = Location::from_degrees(48.8566, 2.3522).unwrap();
+/// let san_francisco = Location::from_degrees(37.7749, -122.4194).unwrap();
+///
+/// let meters = distance_between_locations(paris, san_francisco).unwrap();
+/// assert!(meters > 8_000_000.0);
+/// ```
 pub fn distance_between_locations(p1: Location, p2: Location) -> Result<f64, GeoError> {
     distance_between_locations_karney(p1, p2)
 }
@@ -519,6 +631,21 @@ pub fn distance_between_locations_karney(p1: Location, p2: Location) -> Result<f
 ///
 /// This allows modeling additional path inefficiencies beyond straight-line
 /// propagation (e.g. routing detours, switching/processing overhead).
+///
+/// Returns a [`Latency`] value with microsecond precision.
+///
+/// # Example
+///
+/// ```
+/// use netsim_core::geo::{Location, PathEfficiency, latency_between_locations};
+///
+/// let paris = Location::from_degrees(48.8566, 2.3522).unwrap();
+/// let london = Location::from_degrees(51.5074, -0.1278).unwrap();
+/// let efficiency: PathEfficiency = "80%".parse().unwrap();
+///
+/// let latency = latency_between_locations(paris, london, efficiency).unwrap();
+/// assert!(latency.into_duration().as_micros() > 0);
+/// ```
 ///
 /// Alias for [`latency_between_locations_karney`].
 pub fn latency_between_locations(
@@ -775,5 +902,36 @@ mod tests {
             longitude.to_string().parse::<Longitude>().unwrap(),
             longitude
         );
+    }
+
+    #[test]
+    fn location_display_and_parse() {
+        let location = Location::try_from_e4(48_8566, 2_3522).unwrap();
+
+        assert_eq!(location.to_string(), "48.8566º, 2.3522º");
+        assert_eq!("48.8566, 2.3522".parse::<Location>().unwrap(), location);
+        assert_eq!("48.8566º, 2.3522º".parse::<Location>().unwrap(), location);
+    }
+
+    #[test]
+    fn location_parse_rejects_invalid_values() {
+        let missing_separator = "48.8566".parse::<Location>().unwrap_err().to_string();
+        assert!(missing_separator.contains("expected format"));
+
+        let extra_separator = "48.8566, 2.3522, 1"
+            .parse::<Location>()
+            .unwrap_err()
+            .to_string();
+        assert!(extra_separator.contains("single comma"));
+
+        let invalid_longitude = "48.8566, 181".parse::<Location>().unwrap_err().to_string();
+        assert!(invalid_longitude.contains("Failed to parse Location longitude"));
+    }
+
+    #[test]
+    fn location_display_roundtrip() {
+        let location = Location::try_from_e4(-49_3523, 70_2150).unwrap();
+
+        assert_eq!(location.to_string().parse::<Location>().unwrap(), location);
     }
 }
