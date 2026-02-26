@@ -1,9 +1,11 @@
 pub mod geodesic;
 pub mod geomath;
 
-pub use self::geodesic::Geodesic;
+use self::geodesic::Geodesic;
 
 use crate::measure::Latency;
+use anyhow::{Context as _, anyhow, ensure};
+use std::{fmt, str::FromStr};
 use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Error)]
@@ -68,6 +70,21 @@ impl Latitude {
     }
 }
 
+impl fmt::Display for Latitude {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:.4}{DEGREE_SUFFIX}", self.to_degrees())
+    }
+}
+
+impl FromStr for Latitude {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let degrees = parse_coordinate_degrees(s).context("Failed to parse Latitude")?;
+        Self::from_degrees(degrees).map_err(|error| anyhow!("Failed to parse Latitude: {error}"))
+    }
+}
+
 /// Longitude in e4 fixed-point format (`degrees * 10_000`).
 ///
 /// `-122.4194°` is represented as `-1_224_194`.
@@ -105,6 +122,21 @@ impl Longitude {
 
     fn to_radians(self) -> f64 {
         self.to_degrees().to_radians()
+    }
+}
+
+impl fmt::Display for Longitude {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:.4}{DEGREE_SUFFIX}", self.to_degrees())
+    }
+}
+
+impl FromStr for Longitude {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let degrees = parse_coordinate_degrees(s).context("Failed to parse Longitude.")?;
+        Self::from_degrees(degrees).map_err(|error| anyhow!("Failed to parse Longitude {error}"))
     }
 }
 
@@ -399,6 +431,24 @@ pub fn latency_between_locations_karney(
     latency_from_distance(distance, sol_fo)
 }
 
+const DEGREE_SUFFIX: char = '\u{00BA}';
+const ALT_DEGREE_SUFFIX: char = '\u{00B0}';
+
+fn parse_coordinate_degrees(input: &str) -> anyhow::Result<f64> {
+    let trimmed = input.trim();
+    let trimmed = trimmed
+        .strip_suffix(DEGREE_SUFFIX)
+        .or_else(|| trimmed.strip_suffix(ALT_DEGREE_SUFFIX))
+        .unwrap_or(trimmed)
+        .trim();
+
+    ensure!(!trimmed.is_empty(), "cannot parse from empty string");
+
+    trimmed
+        .parse::<f64>()
+        .map_err(|error| anyhow!("failed to parse `{input}`: {error}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -514,5 +564,49 @@ mod tests {
         let karney = distance_between_locations_karney(p1, p2).unwrap();
 
         assert!((vincenty - karney).abs() < 1.0);
+    }
+
+    #[test]
+    fn latitude_display_and_parse() {
+        let latitude = Latitude::try_from_e4(48_8534).unwrap();
+
+        assert_eq!(latitude.to_string(), "48.8534\u{00BA}");
+        assert_eq!("48.8534".parse::<Latitude>().unwrap(), latitude);
+        assert_eq!("48.8534\u{00BA}".parse::<Latitude>().unwrap(), latitude);
+        assert_eq!("48.8534\u{00B0}".parse::<Latitude>().unwrap(), latitude);
+    }
+
+    #[test]
+    fn longitude_display_and_parse() {
+        let longitude = Longitude::try_from_e4(-122_4194).unwrap();
+
+        assert_eq!(longitude.to_string(), "-122.4194\u{00BA}");
+        assert_eq!("-122.4194".parse::<Longitude>().unwrap(), longitude);
+        assert_eq!(
+            " -122.4194\u{00BA} ".parse::<Longitude>().unwrap(),
+            longitude
+        );
+        assert_eq!("-122.4194\u{00B0}".parse::<Longitude>().unwrap(), longitude);
+    }
+
+    #[test]
+    fn coordinate_parse_rejects_invalid_values() {
+        let latitude_err = "invalid".parse::<Latitude>().unwrap_err().to_string();
+        assert!(latitude_err.contains("Failed to parse Latitude"));
+
+        let longitude_err = "181".parse::<Longitude>().unwrap_err().to_string();
+        assert!(longitude_err.contains("longitude out of range"));
+    }
+
+    #[test]
+    fn coordinate_display_roundtrip() {
+        let latitude = Latitude::try_from_e4(-49_3523).unwrap();
+        let longitude = Longitude::try_from_e4(70_2150).unwrap();
+
+        assert_eq!(latitude.to_string().parse::<Latitude>().unwrap(), latitude);
+        assert_eq!(
+            longitude.to_string().parse::<Longitude>().unwrap(),
+            longitude
+        );
     }
 }
