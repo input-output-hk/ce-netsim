@@ -303,15 +303,16 @@ pub fn latency_between_locations(
     }
 
     let distance = distance_between(p1, p2)?;
-    let latency_ms = distance / (SPEED_OF_FIBER * sol_fo) * 1000.0;
+    let latency_us = distance / (SPEED_OF_FIBER * sol_fo) * 1_000_000.0;
 
-    if !latency_ms.is_finite() || latency_ms < 0.0 {
+    if !latency_us.is_finite() || latency_us < 0.0 || latency_us > (u64::MAX as f64) {
         return Err(GeoError::NonFiniteComputation);
     }
 
-    Ok(Latency::new(std::time::Duration::from_millis(
-        latency_ms as u64,
-    )))
+    // Round to nearest microsecond to match Latency precision without systematic floor bias.
+    let latency_us = latency_us.round() as u64;
+
+    Ok(Latency::new(std::time::Duration::from_micros(latency_us)))
 }
 
 #[cfg(test)]
@@ -334,7 +335,7 @@ mod tests {
     fn latency_between() {
         let latency = latency_between_locations(p1(), p2(), SOL_FO).unwrap();
 
-        assert_eq!(latency.to_string(), "122ms");
+        assert_eq!(latency.to_string(), "122ms512µs");
     }
 
     #[test]
@@ -387,5 +388,16 @@ mod tests {
             Location::from_degrees(f64::NAN, 0.0).unwrap_err(),
             GeoError::NonFiniteComputation
         );
+    }
+
+    #[test]
+    fn short_distance_keeps_microsecond_precision() {
+        let p1 = Location::try_from_e4(0, 0).unwrap();
+        let p2 = Location::try_from_e4(0_0100, 0).unwrap();
+
+        let latency = latency_between_locations(p1, p2, 1.0).unwrap();
+        let duration = latency.into_duration();
+        assert!(duration > std::time::Duration::ZERO);
+        assert!(duration < std::time::Duration::from_millis(1));
     }
 }
