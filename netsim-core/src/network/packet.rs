@@ -179,10 +179,10 @@ impl<T> Packet<T> {
 
 impl<T> Drop for Packet<T> {
     fn drop(&mut self) {
-        if let Some(data) = self.take_inner() {
-            if let Some(on_drop) = self.on_drop.take() {
-                on_drop.0(data);
-            }
+        if let Some(data) = self.take_inner()
+            && let Some(on_drop) = self.on_drop.take()
+        {
+            on_drop.0(data);
         }
     }
 }

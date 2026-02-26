@@ -20,7 +20,7 @@ name = "gauge"
 harness = false
 
 [[bench]]
-name = "vincenty"
+name = "geo"
 harness = false
 
 [[bench]]

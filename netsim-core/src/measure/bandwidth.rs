@@ -45,6 +45,7 @@ impl Bandwidth {
     /// Stores [`u64::MAX`] bytes per microsecond, which is effectively
     /// unlimited for any realistic simulation.
     ///
+    #[allow(clippy::declare_interior_mutable_const)]
     pub const MAX: Self = Self::new(u64::MAX, Duration::from_secs(1));
 
     /// create a new [`Bandwidth`]

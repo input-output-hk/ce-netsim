@@ -1,3 +1,8 @@
+pub mod geodesic;
+pub mod geomath;
+
+pub use self::geodesic::Geodesic;
+
 use crate::measure::Latency;
 use thiserror::Error;
 
@@ -54,8 +59,12 @@ impl Latitude {
         self.0
     }
 
+    fn to_degrees(self) -> f64 {
+        self.0 as f64 / 10_000.0
+    }
+
     fn to_radians(self) -> f64 {
-        (self.0 as f64 / 10_000.0).to_radians()
+        self.to_degrees().to_radians()
     }
 }
 
@@ -90,8 +99,12 @@ impl Longitude {
         self.0
     }
 
+    fn to_degrees(self) -> f64 {
+        self.0 as f64 / 10_000.0
+    }
+
     fn to_radians(self) -> f64 {
-        (self.0 as f64 / 10_000.0).to_radians()
+        self.to_degrees().to_radians()
     }
 }
 
@@ -129,17 +142,50 @@ impl Location {
     }
 }
 
-// return the distance in meter between point1 and point2
-fn distance_between(point1: Location, point2: Location) -> Result<f64, GeoError> {
-    let distance = VincentyInverse::default()
-        .calculate(point1, point2, Spheroid::earth())
-        .ok_or(GeoError::NonConvergent)?;
+const SPEED_OF_LIGHT: f64 = 299_792_458.0; // meter per second
+const SPEED_OF_FIBER: f64 = SPEED_OF_LIGHT * 0.69; // light travels 31% slower in fiber optics
 
-    if !distance.is_finite() {
+fn normalize_distance(distance: f64) -> Result<f64, GeoError> {
+    if !distance.is_finite() || distance < 0.0 {
         return Err(GeoError::NonFiniteComputation);
     }
 
     Ok(distance)
+}
+
+// return the distance in meter between point1 and point2
+fn distance_between_vincenty(point1: Location, point2: Location) -> Result<f64, GeoError> {
+    let distance = VincentyInverse::default()
+        .calculate(point1, point2, Spheroid::earth())
+        .ok_or(GeoError::NonConvergent)?;
+
+    normalize_distance(distance)
+}
+
+// return the distance in meter between point1 and point2
+fn distance_between_karney(point1: Location, point2: Location) -> Result<f64, GeoError> {
+    let distance = KarneyInverse::default()
+        .calculate(point1, point2, Spheroid::earth())
+        .ok_or(GeoError::NonFiniteComputation)?;
+
+    normalize_distance(distance)
+}
+
+fn latency_from_distance(distance: f64, sol_fo: f64) -> Result<Latency, GeoError> {
+    if !sol_fo.is_finite() || !(0.01..=1.0).contains(&sol_fo) {
+        return Err(GeoError::InvalidFiberSpeedRatio { value: sol_fo });
+    }
+
+    let latency_us = distance / (SPEED_OF_FIBER * sol_fo) * 1_000_000.0;
+
+    if !latency_us.is_finite() || latency_us < 0.0 || latency_us > (u64::MAX as f64) {
+        return Err(GeoError::NonFiniteComputation);
+    }
+
+    // Round to nearest microsecond to match Latency precision without systematic floor bias.
+    let latency_us = latency_us.round() as u64;
+
+    Ok(Latency::new(std::time::Duration::from_micros(latency_us)))
 }
 
 /// Spheroid parameter
@@ -198,6 +244,13 @@ impl Default for VincentyInverse {
         Self { nb_iter: 50 }
     }
 }
+
+/// Karney inverse geodesic algorithm via GeographicLib.
+///
+/// This method is robust for nearly antipodal point pairs where Vincenty may
+/// fail to converge.
+#[derive(Clone, Debug, Default)]
+struct KarneyInverse;
 
 trait SpheroidDistanceAlgorithm {
     /// Try to calculate the distance between two points on a spheroid, using a formula.
@@ -299,29 +352,51 @@ impl SpheroidDistanceAlgorithm for VincentyInverse {
     }
 }
 
+impl SpheroidDistanceAlgorithm for KarneyInverse {
+    fn calculate(&self, point1: Location, point2: Location, spheroid: Spheroid) -> Option<f64> {
+        let geodesic = Geodesic::new(spheroid.alpha, spheroid.inv_flattening);
+        let distance = geodesic.inverse_distance(
+            point1.latitude.to_degrees(),
+            point1.longitude.to_degrees(),
+            point2.latitude.to_degrees(),
+            point2.longitude.to_degrees(),
+        );
+
+        if distance.is_finite() && distance >= 0.0 {
+            Some(distance)
+        } else {
+            None
+        }
+    }
+}
+
+/// Distance using Vincenty inverse formula.
+pub fn distance_between_locations_vincenty(p1: Location, p2: Location) -> Result<f64, GeoError> {
+    distance_between_vincenty(p1, p2)
+}
+
+/// Distance using Karney/GeographicLib inverse algorithm.
+pub fn distance_between_locations_karney(p1: Location, p2: Location) -> Result<f64, GeoError> {
+    distance_between_karney(p1, p2)
+}
+
 pub fn latency_between_locations(
     p1: Location,
     p2: Location,
     sol_fo: f64,
 ) -> Result<Latency, GeoError> {
-    const SPEED_OF_LIGHT: f64 = 299_792_458.0; // meter per second
-    const SPEED_OF_FIBER: f64 = SPEED_OF_LIGHT * 0.69; // light travels 31% slower in fiber optics
+    let distance = distance_between_vincenty(p1, p2)?;
+    latency_from_distance(distance, sol_fo)
+}
 
-    if !sol_fo.is_finite() || !(0.01..=1.0).contains(&sol_fo) {
-        return Err(GeoError::InvalidFiberSpeedRatio { value: sol_fo });
-    }
-
-    let distance = distance_between(p1, p2)?;
-    let latency_us = distance / (SPEED_OF_FIBER * sol_fo) * 1_000_000.0;
-
-    if !latency_us.is_finite() || latency_us < 0.0 || latency_us > (u64::MAX as f64) {
-        return Err(GeoError::NonFiniteComputation);
-    }
-
-    // Round to nearest microsecond to match Latency precision without systematic floor bias.
-    let latency_us = latency_us.round() as u64;
-
-    Ok(Latency::new(std::time::Duration::from_micros(latency_us)))
+/// Latency using Karney/GeographicLib inverse distance.
+pub fn latency_between_locations_karney(
+    p1: Location,
+    p2: Location,
+    sol_fo: f64,
+) -> Result<Latency, GeoError> {
+    let distance = distance_between_karney(p1, p2)?;
+    latency_from_distance(distance, sol_fo)
 }
 
 #[cfg(test)]
@@ -416,8 +491,28 @@ mod tests {
         let p2 = Location::try_from_e4(0, 180_0000).unwrap();
 
         assert_eq!(
-            latency_between_locations(p1, p2, 1.0).unwrap_err(),
+            distance_between_locations_vincenty(p1, p2).unwrap_err(),
             GeoError::NonConvergent
         );
+    }
+
+    #[test]
+    fn karney_inverse_handles_antipodal_points() {
+        let p1 = Location::try_from_e4(0, 0).unwrap();
+        let p2 = Location::try_from_e4(0, 180_0000).unwrap();
+
+        let distance = distance_between_locations_karney(p1, p2).unwrap();
+        assert!((distance - 20_003_931.0).abs() < 1.0);
+    }
+
+    #[test]
+    fn karney_and_vincenty_are_close_on_regular_case() {
+        let p1 = p1();
+        let p2 = p2();
+
+        let vincenty = distance_between_locations_vincenty(p1, p2).unwrap();
+        let karney = distance_between_locations_karney(p1, p2).unwrap();
+
+        assert!((vincenty - karney).abs() < 1.0);
     }
 }

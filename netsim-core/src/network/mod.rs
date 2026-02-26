@@ -290,10 +290,10 @@ where
 
         // Check packet loss before routing (avoids building the full route for dropped packets)
         let edge = LinkId::new((from, to));
-        if let Some(link) = self.links.get_mut(&edge) {
-            if link.should_drop_packet() {
-                return Ok(());
-            }
+        if let Some(link) = self.links.get_mut(&edge)
+            && link.should_drop_packet()
+        {
+            return Ok(());
         }
 
         let route = self.route(from, to)?;
@@ -352,20 +352,19 @@ where
 
         let mut cursor = self.transit.cursor_mut();
         loop {
-            let remove;
             let Some(transit) = cursor.as_mut() else {
                 break;
             };
 
             transit.advance(self.round, duration);
 
-            remove = transit.completed() || transit.corrupted();
+            let remove = transit.completed() || transit.corrupted();
 
             if remove {
-                if let Some(transit) = cursor.remove_entry() {
-                    if let Ok(packet) = transit.complete() {
-                        handle(packet)
-                    }
+                if let Some(transit) = cursor.remove_entry()
+                    && let Ok(packet) = transit.complete()
+                {
+                    handle(packet)
                 }
             } else {
                 cursor.move_next();

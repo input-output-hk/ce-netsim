@@ -41,6 +41,7 @@ pub const DEFAULT_UPLOAD_BUFFER: u64 = u64::MAX;
 /// );
 /// ```
 ///
+#[allow(clippy::declare_interior_mutable_const)]
 pub const DEFAULT_UPLOAD_BANDWIDTH: Bandwidth =
     Bandwidth::new(500 * 1_024 * 1_024, Duration::from_secs(1));
 
@@ -68,5 +69,6 @@ pub const DEFAULT_DOWNLOAD_BUFFER: u64 = u64::MAX;
 /// );
 /// ```
 ///
+#[allow(clippy::declare_interior_mutable_const)]
 pub const DEFAULT_DOWNLOAD_BANDWIDTH: Bandwidth =
     Bandwidth::new(1_024 * 1_024 * 1_024, Duration::from_secs(1));
