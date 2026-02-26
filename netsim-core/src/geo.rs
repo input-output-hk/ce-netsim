@@ -1,5 +1,27 @@
 use crate::measure::Latency;
-use anyhow::{anyhow, ensure};
+use thiserror::Error;
+
+#[derive(Debug, Clone, PartialEq, Error)]
+pub enum GeoError {
+    #[error(
+        "latitude out of range [{min}, {max}] in e4 units: {value}",
+        min = Latitude::MIN_E4,
+        max = Latitude::MAX_E4
+    )]
+    InvalidLatitude { value: i32 },
+    #[error(
+        "longitude out of range [{min}, {max}] in e4 units: {value}",
+        min = Longitude::MIN_E4,
+        max = Longitude::MAX_E4
+    )]
+    InvalidLongitude { value: i32 },
+    #[error("fiber speed ratio must be finite and within [0.01, 1.0], got {value}")]
+    InvalidFiberSpeedRatio { value: f64 },
+    #[error("vincenty inverse formula did not converge")]
+    NonConvergent,
+    #[error("geo computation produced a non-finite value")]
+    NonFiniteComputation,
+}
 
 /// Latitude in e4 fixed-point format (`degrees * 10_000`).
 ///
@@ -11,20 +33,17 @@ impl Latitude {
     pub const MIN_E4: i32 = -90_0000;
     pub const MAX_E4: i32 = 90_0000;
 
-    pub fn try_from_e4(value: i32) -> anyhow::Result<Self> {
-        ensure!(
-            (Self::MIN_E4..=Self::MAX_E4).contains(&value),
-            "latitude out of range [{}, {}] in e4 units: {}",
-            Self::MIN_E4,
-            Self::MAX_E4,
-            value
-        );
+    pub fn try_from_e4(value: i32) -> Result<Self, GeoError> {
+        if !(Self::MIN_E4..=Self::MAX_E4).contains(&value) {
+            return Err(GeoError::InvalidLatitude { value });
+        }
+
         Ok(Self(value))
     }
 
-    pub fn from_degrees(value: f64) -> anyhow::Result<Self> {
+    pub fn from_degrees(value: f64) -> Result<Self, GeoError> {
         if !value.is_finite() {
-            return Err(anyhow!("latitude must be finite"));
+            return Err(GeoError::NonFiniteComputation);
         }
 
         let scaled = (value * 10_000.0).round();
@@ -50,20 +69,17 @@ impl Longitude {
     pub const MIN_E4: i32 = -180_0000;
     pub const MAX_E4: i32 = 180_0000;
 
-    pub fn try_from_e4(value: i32) -> anyhow::Result<Self> {
-        ensure!(
-            (Self::MIN_E4..=Self::MAX_E4).contains(&value),
-            "longitude out of range [{}, {}] in e4 units: {}",
-            Self::MIN_E4,
-            Self::MAX_E4,
-            value
-        );
+    pub fn try_from_e4(value: i32) -> Result<Self, GeoError> {
+        if !(Self::MIN_E4..=Self::MAX_E4).contains(&value) {
+            return Err(GeoError::InvalidLongitude { value });
+        }
+
         Ok(Self(value))
     }
 
-    pub fn from_degrees(value: f64) -> anyhow::Result<Self> {
+    pub fn from_degrees(value: f64) -> Result<Self, GeoError> {
         if !value.is_finite() {
-            return Err(anyhow!("longitude must be finite"));
+            return Err(GeoError::NonFiniteComputation);
         }
 
         let scaled = (value * 10_000.0).round();
@@ -94,14 +110,14 @@ impl Location {
         }
     }
 
-    pub fn try_from_e4(latitude: i32, longitude: i32) -> anyhow::Result<Self> {
+    pub fn try_from_e4(latitude: i32, longitude: i32) -> Result<Self, GeoError> {
         Ok(Self::new(
             Latitude::try_from_e4(latitude)?,
             Longitude::try_from_e4(longitude)?,
         ))
     }
 
-    pub fn from_degrees(latitude: f64, longitude: f64) -> anyhow::Result<Self> {
+    pub fn from_degrees(latitude: f64, longitude: f64) -> Result<Self, GeoError> {
         Ok(Self::new(
             Latitude::from_degrees(latitude)?,
             Longitude::from_degrees(longitude)?,
@@ -114,8 +130,16 @@ impl Location {
 }
 
 // return the distance in meter between point1 and point2
-fn distance_between(point1: Location, point2: Location) -> Option<f64> {
-    VincentyInverse::default().calculate(point1, point2, Spheroid::earth())
+fn distance_between(point1: Location, point2: Location) -> Result<f64, GeoError> {
+    let distance = VincentyInverse::default()
+        .calculate(point1, point2, Spheroid::earth())
+        .ok_or(GeoError::NonConvergent)?;
+
+    if !distance.is_finite() {
+        return Err(GeoError::NonFiniteComputation);
+    }
+
+    Ok(distance)
 }
 
 /// Spheroid parameter
@@ -266,18 +290,28 @@ impl SpheroidDistanceAlgorithm for VincentyInverse {
     }
 }
 
-pub fn latency_between_locations(p1: Location, p2: Location, sol_fo: f64) -> Option<Latency> {
+pub fn latency_between_locations(
+    p1: Location,
+    p2: Location,
+    sol_fo: f64,
+) -> Result<Latency, GeoError> {
     const SPEED_OF_LIGHT: f64 = 299_792_458.0; // meter per second
     const SPEED_OF_FIBER: f64 = SPEED_OF_LIGHT * 0.69; // light travels 31% slower in fiber optics
 
-    let sol_fo = sol_fo.clamp(0.01, 1.0);
+    if !sol_fo.is_finite() || !(0.01..=1.0).contains(&sol_fo) {
+        return Err(GeoError::InvalidFiberSpeedRatio { value: sol_fo });
+    }
 
-    let distance = distance_between(p1, p2);
-    distance.map(|d| {
-        Latency::new(std::time::Duration::from_millis(
-            (d / (SPEED_OF_FIBER * sol_fo) * 1000.0) as u64,
-        ))
-    })
+    let distance = distance_between(p1, p2)?;
+    let latency_ms = distance / (SPEED_OF_FIBER * sol_fo) * 1000.0;
+
+    if !latency_ms.is_finite() || latency_ms < 0.0 {
+        return Err(GeoError::NonFiniteComputation);
+    }
+
+    Ok(Latency::new(std::time::Duration::from_millis(
+        latency_ms as u64,
+    )))
 }
 
 #[cfg(test)]
@@ -325,11 +359,33 @@ mod tests {
 
     #[test]
     fn rejects_invalid_latitude() {
-        assert!(Location::try_from_e4(91_0000, 0).is_err());
+        assert_eq!(
+            Location::try_from_e4(91_0000, 0).unwrap_err(),
+            GeoError::InvalidLatitude { value: 91_0000 }
+        );
     }
 
     #[test]
     fn rejects_invalid_longitude() {
-        assert!(Location::try_from_e4(0, 181_0000).is_err());
+        assert_eq!(
+            Location::try_from_e4(0, 181_0000).unwrap_err(),
+            GeoError::InvalidLongitude { value: 181_0000 }
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_fiber_speed_ratio() {
+        assert_eq!(
+            latency_between_locations(p1(), p2(), 0.0).unwrap_err(),
+            GeoError::InvalidFiberSpeedRatio { value: 0.0 }
+        );
+    }
+
+    #[test]
+    fn rejects_non_finite_coordinate_degrees() {
+        assert_eq!(
+            Location::from_degrees(f64::NAN, 0.0).unwrap_err(),
+            GeoError::NonFiniteComputation
+        );
     }
 }
