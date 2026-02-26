@@ -22,7 +22,7 @@ pub enum GeoError {
         max = Longitude::MAX_E4
     )]
     InvalidLongitude { value: i32 },
-    #[error("fiber speed ratio must be finite and within [0.01, 1.0], got {value}")]
+    #[error("path efficiency must be finite and within [0.01, 1.0], got {value}")]
     InvalidFiberSpeedRatio { value: f64 },
     #[error("vincenty inverse formula did not converge")]
     NonConvergent,
@@ -174,8 +174,10 @@ impl Location {
     }
 }
 
-const SPEED_OF_LIGHT: f64 = 299_792_458.0; // meter per second
-const SPEED_OF_FIBER: f64 = SPEED_OF_LIGHT * 0.69; // light travels 31% slower in fiber optics
+/// Speed of light in a vacuum (in meter per second)
+const SPEED_OF_LIGHT: f64 = 299_792_458.0;
+/// baseline propagation speed in fiber (31% of speed of light)
+const SPEED_OF_FIBER: f64 = SPEED_OF_LIGHT * 0.69;
 
 fn normalize_distance(distance: f64) -> Result<f64, GeoError> {
     if !distance.is_finite() || distance < 0.0 {
@@ -203,12 +205,14 @@ fn distance_between_karney(point1: Location, point2: Location) -> Result<f64, Ge
     normalize_distance(distance)
 }
 
-fn latency_from_distance(distance: f64, sol_fo: f64) -> Result<Latency, GeoError> {
-    if !sol_fo.is_finite() || !(0.01..=1.0).contains(&sol_fo) {
-        return Err(GeoError::InvalidFiberSpeedRatio { value: sol_fo });
+fn latency_from_distance(distance: f64, path_efficiency: f64) -> Result<Latency, GeoError> {
+    if !path_efficiency.is_finite() || !(0.01..=1.0).contains(&path_efficiency) {
+        return Err(GeoError::InvalidFiberSpeedRatio {
+            value: path_efficiency,
+        });
     }
 
-    let latency_us = distance / (SPEED_OF_FIBER * sol_fo) * 1_000_000.0;
+    let latency_us = distance / (SPEED_OF_FIBER * path_efficiency) * 1_000_000.0;
 
     if !latency_us.is_finite() || latency_us < 0.0 || latency_us > (u64::MAX as f64) {
         return Err(GeoError::NonFiniteComputation);
@@ -422,13 +426,25 @@ pub fn distance_between_locations_karney(p1: Location, p2: Location) -> Result<f
     distance_between_karney(p1, p2)
 }
 
+/// One-way propagation latency between two locations.
+///
+/// `path_efficiency` scales the baseline fiber propagation speed:
+///
+/// `effective_speed = SPEED_OF_FIBER * path_efficiency`
+///
+/// - `1.0`: pure geometric fiber propagation (no extra slowdown)
+/// - `0.5`: effective speed is halved, so latency doubles
+///
+/// This allows modeling additional path inefficiencies beyond straight-line
+/// propagation (e.g. routing detours, switching/processing overhead).
+///
+/// Alias for [`latency_between_locations_karney`].
 pub fn latency_between_locations(
     p1: Location,
     p2: Location,
-    sol_fo: f64,
+    path_efficiency: f64,
 ) -> Result<Latency, GeoError> {
-    let distance = distance_between_locations(p1, p2)?;
-    latency_from_distance(distance, sol_fo)
+    latency_between_locations_karney(p1, p2, path_efficiency)
 }
 
 /// Latency using Karney/GeographicLib inverse distance.
@@ -437,9 +453,10 @@ pub fn latency_between_locations(
 pub fn latency_between_locations_karney(
     p1: Location,
     p2: Location,
-    sol_fo: f64,
+    path_efficiency: f64,
 ) -> Result<Latency, GeoError> {
-    latency_between_locations(p1, p2, sol_fo)
+    let distance = distance_between_locations_karney(p1, p2)?;
+    latency_from_distance(distance, path_efficiency)
 }
 
 /// Reference latency using Vincenty inverse distance.
@@ -449,10 +466,10 @@ pub fn latency_between_locations_karney(
 pub fn latency_between_locations_vincenty(
     p1: Location,
     p2: Location,
-    sol_fo: f64,
+    path_efficiency: f64,
 ) -> Result<Latency, GeoError> {
     let distance = distance_between_vincenty(p1, p2)?;
-    latency_from_distance(distance, sol_fo)
+    latency_from_distance(distance, path_efficiency)
 }
 
 const DEGREE_SUFFIX: char = '\u{00BA}';
@@ -477,7 +494,7 @@ fn parse_coordinate_degrees(input: &str) -> anyhow::Result<f64> {
 mod tests {
     use super::*;
 
-    const SOL_FO: f64 = 0.5;
+    const PATH_EFFICIENCY: f64 = 0.5;
 
     fn p1() -> Location {
         // 48.853415254543435, 2.3487911014845038
@@ -491,7 +508,7 @@ mod tests {
 
     #[test]
     fn latency_between() {
-        let latency = latency_between_locations(p1(), p2(), SOL_FO).unwrap();
+        let latency = latency_between_locations(p1(), p2(), PATH_EFFICIENCY).unwrap();
 
         assert_eq!(latency.to_string(), "122ms512µs");
     }
@@ -499,7 +516,7 @@ mod tests {
     #[test]
     fn latency_between_self() {
         let p1 = p1();
-        let latency = latency_between_locations(p1, p1, SOL_FO).unwrap();
+        let latency = latency_between_locations(p1, p1, PATH_EFFICIENCY).unwrap();
 
         assert_eq!(latency.to_string(), "0ms");
     }
@@ -599,8 +616,8 @@ mod tests {
         let karney_distance = distance_between_locations_karney(p1, p2).unwrap();
         assert!((distance - karney_distance).abs() < 1e-6);
 
-        let latency = latency_between_locations(p1, p2, SOL_FO).unwrap();
-        let karney_latency = latency_between_locations_karney(p1, p2, SOL_FO).unwrap();
+        let latency = latency_between_locations(p1, p2, PATH_EFFICIENCY).unwrap();
+        let karney_latency = latency_between_locations_karney(p1, p2, PATH_EFFICIENCY).unwrap();
         assert_eq!(latency, karney_latency);
     }
 

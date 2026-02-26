@@ -1,7 +1,7 @@
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use netsim_core::geo::{self, GeoError, Location};
 
-const FIBER_SPEED_RATIO: f64 = 0.5;
+const PATH_EFFICIENCY: f64 = 0.5;
 
 #[derive(Clone, Copy)]
 struct GeoCase {
@@ -70,10 +70,10 @@ fn emit_comparison_report(cases: &[GeoCase]) {
         let vincenty_distance = geo::distance_between_locations_vincenty(case.p1, case.p2);
         let karney_distance = geo::distance_between_locations_karney(case.p1, case.p2);
         let vincenty_latency =
-            geo::latency_between_locations_vincenty(case.p1, case.p2, FIBER_SPEED_RATIO)
+            geo::latency_between_locations_vincenty(case.p1, case.p2, PATH_EFFICIENCY)
                 .map(|latency| latency.into_duration().as_micros());
         let karney_latency =
-            geo::latency_between_locations_karney(case.p1, case.p2, FIBER_SPEED_RATIO)
+            geo::latency_between_locations_karney(case.p1, case.p2, PATH_EFFICIENCY)
                 .map(|latency| latency.into_duration().as_micros());
 
         let distance_delta = match (&vincenty_distance, &karney_distance) {
@@ -137,7 +137,7 @@ fn bench_latency(c: &mut Criterion, cases: &[GeoCase]) {
                 black_box(geo::latency_between_locations_vincenty(
                     black_box(p1),
                     black_box(p2),
-                    FIBER_SPEED_RATIO,
+                    PATH_EFFICIENCY,
                 ))
             })
         });
@@ -146,7 +146,7 @@ fn bench_latency(c: &mut Criterion, cases: &[GeoCase]) {
                 black_box(geo::latency_between_locations_karney(
                     black_box(p1),
                     black_box(p2),
-                    FIBER_SPEED_RATIO,
+                    PATH_EFFICIENCY,
                 ))
             })
         });
