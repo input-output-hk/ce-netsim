@@ -1,16 +1,25 @@
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use netsim_core::geo::{self, Location};
 
-//48.853415254543435, 2.3487911014845038
-const P1: Location = (48_8534, 2_3487);
-// -49.35231574277824, 70.2150600748867
-const P2: Location = (-49_3523, 70_2150);
 const SOL_FO: f64 = 0.5;
 
+fn p1() -> Location {
+    // 48.853415254543435, 2.3487911014845038
+    Location::try_from_e4(48_8534, 2_3487).expect("benchmark coordinate must be valid")
+}
+
+fn p2() -> Location {
+    // -49.35231574277824, 70.2150600748867
+    Location::try_from_e4(-49_3523, 70_2150).expect("benchmark coordinate must be valid")
+}
+
 fn vincenty(c: &mut Criterion) {
+    let p1 = p1();
+    let p2 = p2();
+
     let v = black_box(geo::latency_between_locations(
-        black_box(P1),
-        black_box(P2),
+        black_box(p1),
+        black_box(p2),
         SOL_FO,
     ));
 
@@ -19,8 +28,8 @@ fn vincenty(c: &mut Criterion) {
     c.bench_function("geo::latency_between_locations", |b| {
         b.iter(|| {
             black_box(geo::latency_between_locations(
-                black_box(P1),
-                black_box(P2),
+                black_box(p1),
+                black_box(p2),
                 SOL_FO,
             ))
         });
