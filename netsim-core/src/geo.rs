@@ -22,8 +22,8 @@ pub enum GeoError {
         max = Longitude::MAX_E4
     )]
     InvalidLongitude { value: i32 },
-    #[error("path efficiency must be finite and within [0.01, 1.0], got {value}")]
-    InvalidFiberSpeedRatio { value: f64 },
+    #[error("path efficiency must be finite and within (0.0, 1.0], got {value}")]
+    InvalidPathEfficiency { value: f64 },
     #[error("vincenty inverse formula did not converge")]
     NonConvergent,
     #[error("geo computation produced a non-finite value")]
@@ -174,6 +174,91 @@ impl Location {
     }
 }
 
+/// Additional end-to-end efficiency factor applied to fiber propagation speed.
+///
+/// The effective speed used for latency computation is:
+///
+/// `effective_speed = SPEED_OF_FIBER * path_efficiency.as_ratio()`
+///
+/// where `path_efficiency` must be in `(0.0, 1.0]`.
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+pub struct PathEfficiency(f64);
+
+impl PathEfficiency {
+    pub const FULL: Self = Self(1.0);
+    pub const HALF: Self = Self(0.5);
+
+    pub fn try_from_ratio(value: f64) -> Result<Self, GeoError> {
+        if !value.is_finite() || value <= 0.0 || value > 1.0 {
+            return Err(GeoError::InvalidPathEfficiency { value });
+        }
+
+        Ok(Self(value))
+    }
+
+    pub fn from_percent(value: f64) -> Result<Self, GeoError> {
+        Self::try_from_ratio(value / 100.0)
+    }
+
+    pub const fn as_ratio(self) -> f64 {
+        self.0
+    }
+
+    pub const fn as_percent(self) -> f64 {
+        self.0 * 100.0
+    }
+}
+
+impl Default for PathEfficiency {
+    fn default() -> Self {
+        Self::FULL
+    }
+}
+
+impl TryFrom<f64> for PathEfficiency {
+    type Error = GeoError;
+
+    fn try_from(value: f64) -> Result<Self, Self::Error> {
+        Self::try_from_ratio(value)
+    }
+}
+
+impl fmt::Display for PathEfficiency {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut percent = format!("{:.2}", self.as_percent());
+        while percent.ends_with('0') {
+            percent.pop();
+        }
+        if percent.ends_with('.') {
+            percent.pop();
+        }
+        write!(f, "{percent}%")
+    }
+}
+
+impl FromStr for PathEfficiency {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let trimmed = s.trim();
+        ensure!(!trimmed.is_empty(), "Failed to parse PathEfficiency: empty");
+
+        let ratio = if let Some(percent) = trimmed.strip_suffix('%') {
+            let percent = percent.trim().parse::<f64>().map_err(|error| {
+                anyhow!("Failed to parse PathEfficiency percent `{trimmed}`: {error}")
+            })?;
+            percent / 100.0
+        } else {
+            trimmed.parse::<f64>().map_err(|error| {
+                anyhow!("Failed to parse PathEfficiency ratio `{trimmed}`: {error}")
+            })?
+        };
+
+        Self::try_from_ratio(ratio)
+            .map_err(|error| anyhow!("Failed to parse PathEfficiency: {error}"))
+    }
+}
+
 /// Speed of light in a vacuum (in meter per second)
 const SPEED_OF_LIGHT: f64 = 299_792_458.0;
 /// baseline propagation speed in fiber (31% of speed of light)
@@ -205,14 +290,11 @@ fn distance_between_karney(point1: Location, point2: Location) -> Result<f64, Ge
     normalize_distance(distance)
 }
 
-fn latency_from_distance(distance: f64, path_efficiency: f64) -> Result<Latency, GeoError> {
-    if !path_efficiency.is_finite() || !(0.01..=1.0).contains(&path_efficiency) {
-        return Err(GeoError::InvalidFiberSpeedRatio {
-            value: path_efficiency,
-        });
-    }
-
-    let latency_us = distance / (SPEED_OF_FIBER * path_efficiency) * 1_000_000.0;
+fn latency_from_distance(
+    distance: f64,
+    path_efficiency: PathEfficiency,
+) -> Result<Latency, GeoError> {
+    let latency_us = distance / (SPEED_OF_FIBER * path_efficiency.as_ratio()) * 1_000_000.0;
 
     if !latency_us.is_finite() || latency_us < 0.0 || latency_us > (u64::MAX as f64) {
         return Err(GeoError::NonFiniteComputation);
@@ -430,7 +512,7 @@ pub fn distance_between_locations_karney(p1: Location, p2: Location) -> Result<f
 ///
 /// `path_efficiency` scales the baseline fiber propagation speed:
 ///
-/// `effective_speed = SPEED_OF_FIBER * path_efficiency`
+/// `effective_speed = SPEED_OF_FIBER * path_efficiency.as_ratio()`
 ///
 /// - `1.0`: pure geometric fiber propagation (no extra slowdown)
 /// - `0.5`: effective speed is halved, so latency doubles
@@ -442,7 +524,7 @@ pub fn distance_between_locations_karney(p1: Location, p2: Location) -> Result<f
 pub fn latency_between_locations(
     p1: Location,
     p2: Location,
-    path_efficiency: f64,
+    path_efficiency: PathEfficiency,
 ) -> Result<Latency, GeoError> {
     latency_between_locations_karney(p1, p2, path_efficiency)
 }
@@ -453,7 +535,7 @@ pub fn latency_between_locations(
 pub fn latency_between_locations_karney(
     p1: Location,
     p2: Location,
-    path_efficiency: f64,
+    path_efficiency: PathEfficiency,
 ) -> Result<Latency, GeoError> {
     let distance = distance_between_locations_karney(p1, p2)?;
     latency_from_distance(distance, path_efficiency)
@@ -466,7 +548,7 @@ pub fn latency_between_locations_karney(
 pub fn latency_between_locations_vincenty(
     p1: Location,
     p2: Location,
-    path_efficiency: f64,
+    path_efficiency: PathEfficiency,
 ) -> Result<Latency, GeoError> {
     let distance = distance_between_vincenty(p1, p2)?;
     latency_from_distance(distance, path_efficiency)
@@ -494,7 +576,7 @@ fn parse_coordinate_degrees(input: &str) -> anyhow::Result<f64> {
 mod tests {
     use super::*;
 
-    const PATH_EFFICIENCY: f64 = 0.5;
+    const PATH_EFFICIENCY: PathEfficiency = PathEfficiency::HALF;
 
     fn p1() -> Location {
         // 48.853415254543435, 2.3487911014845038
@@ -550,10 +632,10 @@ mod tests {
     }
 
     #[test]
-    fn rejects_invalid_fiber_speed_ratio() {
+    fn rejects_invalid_path_efficiency() {
         assert_eq!(
-            latency_between_locations(p1(), p2(), 0.0).unwrap_err(),
-            GeoError::InvalidFiberSpeedRatio { value: 0.0 }
+            PathEfficiency::try_from_ratio(0.0).unwrap_err(),
+            GeoError::InvalidPathEfficiency { value: 0.0 }
         );
     }
 
@@ -570,7 +652,7 @@ mod tests {
         let p1 = Location::try_from_e4(0, 0).unwrap();
         let p2 = Location::try_from_e4(0_0100, 0).unwrap();
 
-        let latency = latency_between_locations(p1, p2, 1.0).unwrap();
+        let latency = latency_between_locations(p1, p2, PathEfficiency::FULL).unwrap();
         let duration = latency.into_duration();
         assert!(duration > std::time::Duration::ZERO);
         assert!(duration < std::time::Duration::from_millis(1));
@@ -619,6 +701,36 @@ mod tests {
         let latency = latency_between_locations(p1, p2, PATH_EFFICIENCY).unwrap();
         let karney_latency = latency_between_locations_karney(p1, p2, PATH_EFFICIENCY).unwrap();
         assert_eq!(latency, karney_latency);
+    }
+
+    #[test]
+    fn path_efficiency_display_and_parse() {
+        assert_eq!(PathEfficiency::HALF.to_string(), "50%");
+        assert_eq!(
+            "50%".parse::<PathEfficiency>().unwrap(),
+            PathEfficiency::HALF
+        );
+        assert_eq!(
+            " 50 % ".parse::<PathEfficiency>().unwrap(),
+            PathEfficiency::HALF
+        );
+        assert_eq!(
+            "0.5".parse::<PathEfficiency>().unwrap(),
+            PathEfficiency::HALF
+        );
+    }
+
+    #[test]
+    fn path_efficiency_parse_rejects_invalid_values() {
+        assert_eq!(
+            PathEfficiency::try_from_ratio(1.1).unwrap_err(),
+            GeoError::InvalidPathEfficiency { value: 1.1 }
+        );
+        assert_eq!(
+            PathEfficiency::try_from_ratio(-0.1).unwrap_err(),
+            GeoError::InvalidPathEfficiency { value: -0.1 }
+        );
+        assert!("abc".parse::<PathEfficiency>().is_err());
     }
 
     #[test]

@@ -1,7 +1,7 @@
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
-use netsim_core::geo::{self, GeoError, Location};
+use netsim_core::geo::{self, GeoError, Location, PathEfficiency};
 
-const PATH_EFFICIENCY: f64 = 0.5;
+const PATH_EFFICIENCY: PathEfficiency = PathEfficiency::HALF;
 
 #[derive(Clone, Copy)]
 struct GeoCase {
