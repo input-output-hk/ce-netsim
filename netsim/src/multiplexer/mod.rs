@@ -2,23 +2,23 @@ pub(crate) mod command;
 mod stop;
 
 use self::{
-    command::{command_channel, Command, CommandReceiver, CommandSender},
+    command::{Command, CommandReceiver, CommandSender, command_channel},
     stop::Stop,
 };
 use crate::socket::SimSocketBuilder;
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use command::NewNodeCommand;
 use netsim_core::{
+    Network, NodeId, Packet,
     data::Data,
     network::{PacketIdGenerator, SendError},
-    Network, NodeId, Packet,
 };
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{HashMap, hash_map::Entry},
     sync::{
+        Arc,
         atomic::{AtomicU64, Ordering},
         mpsc::{SyncSender, TryRecvError, TrySendError},
-        Arc,
     },
     thread::JoinHandle,
     time::{Duration, Instant},
@@ -73,8 +73,13 @@ impl<T> SimLinkBuilder<'_, T> {
 
     /// Send the link configuration to the multiplexer.
     pub fn apply(self) -> Result<()> {
-        self.commands
-            .send_configure_link(self.a, self.b, self.latency, self.bandwidth, self.packet_loss)
+        self.commands.send_configure_link(
+            self.a,
+            self.b,
+            self.latency,
+            self.bandwidth,
+            self.packet_loss,
+        )
     }
 }
 
@@ -189,7 +194,13 @@ where
                     }
                 }
             }
-            Command::ConfigureLink { a, b, latency, bandwidth, packet_loss } => {
+            Command::ConfigureLink {
+                a,
+                b,
+                latency,
+                bandwidth,
+                packet_loss,
+            } => {
                 self.network
                     .configure_link(a, b)
                     .set_latency(latency)
@@ -238,11 +249,17 @@ where
                             .get(&ns.id)
                             .map(|e| e.dropped.load(Ordering::Relaxed))
                             .unwrap_or(0);
-                        NodeStats { inner: ns, packets_dropped }
+                        NodeStats {
+                            inner: ns,
+                            packets_dropped,
+                        }
                     })
                     .collect();
 
-                let stats = SimStats { nodes, links: core_stats.links };
+                let stats = SimStats {
+                    nodes,
+                    links: core_stats.links,
+                };
 
                 // ignore if the receiver was already dropped
                 let _ = reply.send(stats);

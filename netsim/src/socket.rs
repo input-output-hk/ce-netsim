@@ -1,18 +1,18 @@
 use crate::multiplexer::command::{CommandSender, NewNodeCommand};
 use anyhow::Result;
 use netsim_core::{
+    Bandwidth, NodeId, Packet,
     data::Data,
     defaults::{
         DEFAULT_DOWNLOAD_BANDWIDTH, DEFAULT_DOWNLOAD_BUFFER, DEFAULT_UPLOAD_BANDWIDTH,
         DEFAULT_UPLOAD_BUFFER,
     },
     network::{PacketId, PacketIdGenerator},
-    Bandwidth, NodeId, Packet,
 };
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
-    mpsc::{sync_channel, Receiver},
     Arc,
+    atomic::{AtomicU64, Ordering},
+    mpsc::{Receiver, sync_channel},
 };
 use thiserror::Error;
 
@@ -131,7 +131,13 @@ impl<T> SimSocketBuilder<'_, T> {
 
         let id = commands.send_new_node(new_node)?;
 
-        Ok(SimSocket::new(id, commands, receiver, packet_id_generator, dropped))
+        Ok(SimSocket::new(
+            id,
+            commands,
+            receiver,
+            packet_id_generator,
+            dropped,
+        ))
     }
 }
 

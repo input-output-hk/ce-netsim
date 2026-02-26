@@ -95,7 +95,7 @@ mod tests {
     use super::*;
     use crate::{
         measure::{Bandwidth, CongestionChannel, Latency},
-        network::{packet::PacketIdGenerator, Route},
+        network::{Route, packet::PacketIdGenerator},
         node::{Node, NodeId},
     };
     use std::sync::Arc;

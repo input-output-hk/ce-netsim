@@ -1,10 +1,10 @@
-use anyhow::{anyhow, Context, Result};
-use netsim_core::{Bandwidth, Latency, NodeId, Packet, PacketLoss};
 use crate::stats::SimStats;
+use anyhow::{Context, Result, anyhow};
+use netsim_core::{Bandwidth, Latency, NodeId, Packet, PacketLoss};
 use std::sync::{
-    atomic::AtomicU64,
-    mpsc::{sync_channel, Receiver, SyncSender, TryRecvError, TrySendError},
     Arc,
+    atomic::AtomicU64,
+    mpsc::{Receiver, SyncSender, TryRecvError, TrySendError, sync_channel},
 };
 
 pub(crate) enum Command<T> {
@@ -84,8 +84,14 @@ impl<T> CommandSender<T> {
         bandwidth: Bandwidth,
         packet_loss: PacketLoss,
     ) -> Result<()> {
-        self.send(Command::ConfigureLink { a, b, latency, bandwidth, packet_loss })
-            .map_err(|error| anyhow!("Failed to send configure link command: {error}"))
+        self.send(Command::ConfigureLink {
+            a,
+            b,
+            latency,
+            bandwidth,
+            packet_loss,
+        })
+        .map_err(|error| anyhow!("Failed to send configure link command: {error}"))
     }
 
     pub(crate) fn send_stats(&mut self) -> Result<SimStats> {

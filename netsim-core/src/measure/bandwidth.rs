@@ -323,15 +323,18 @@ mod tests {
         // With a large enough duration the product overflows u128 → saturates to u64::MAX.
         // 1 second = 1_000_000 µs; bpu * 1_000_000 = (u64::MAX / 1_000_000) * 1_000_000
         // which is close to but not over u64::MAX, so we need a longer duration.
-        assert_eq!(Bandwidth::MAX.capacity(Duration::from_secs(1_000_000)), u64::MAX);
+        assert_eq!(
+            Bandwidth::MAX.capacity(Duration::from_secs(1_000_000)),
+            u64::MAX
+        );
     }
 
     #[test]
     fn parse_invalid_strings() {
-        assert!("42".parse::<Bandwidth>().is_err());            // no unit
-        assert!("mbps".parse::<Bandwidth>().is_err());          // no number
-        assert!("".parse::<Bandwidth>().is_err());              // empty
-        assert!("42mbps extra".parse::<Bandwidth>().is_err());  // trailing token
+        assert!("42".parse::<Bandwidth>().is_err()); // no unit
+        assert!("mbps".parse::<Bandwidth>().is_err()); // no number
+        assert!("".parse::<Bandwidth>().is_err()); // empty
+        assert!("42mbps extra".parse::<Bandwidth>().is_err()); // trailing token
     }
 
     #[test]
@@ -347,7 +350,7 @@ mod tests {
 
     #[test]
     fn ordering_and_eq() {
-        let low  = Bandwidth::new(1, Duration::from_micros(1));
+        let low = Bandwidth::new(1, Duration::from_micros(1));
         let high = Bandwidth::new(5, Duration::from_micros(1));
         let low2 = Bandwidth::new(1, Duration::from_micros(1));
 

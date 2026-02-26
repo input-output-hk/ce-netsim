@@ -1,4 +1,4 @@
-use super::{transit::Transit, Node, Packet, SendError};
+use super::{Node, Packet, SendError, transit::Transit};
 use crate::{
     data::Data,
     link::Link,

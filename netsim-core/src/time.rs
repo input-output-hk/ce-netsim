@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, ensure, Result};
+use anyhow::{Result, anyhow, bail, ensure};
 use core::fmt;
 use logos::{Lexer, Logos};
 use std::{str::FromStr, time};
@@ -85,7 +85,10 @@ impl FromStr for Duration {
             durations.push(duration);
         }
 
-        ensure!(!durations.is_empty(), "Cannot parse empty string as duration");
+        ensure!(
+            !durations.is_empty(),
+            "Cannot parse empty string as duration"
+        );
         Ok(Self(durations.into_iter().sum()))
     }
 }

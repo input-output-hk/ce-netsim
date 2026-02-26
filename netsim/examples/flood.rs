@@ -1,6 +1,6 @@
 use clap::Parser;
 use netsim::{Data, NodeId, SimSocket};
-use netsim_core::{time::Duration, Bandwidth};
+use netsim_core::{Bandwidth, time::Duration};
 use std::{
     thread::{self, sleep},
     time::Instant,
@@ -106,7 +106,9 @@ impl Sink {
         let total = delays.iter().copied().sum::<std::time::Duration>();
         let avg = total / delays.len() as u32;
 
-        println!("sent {len} messages over. Msg received with an average of {avg:?} delays to the expected LATENCY");
+        println!(
+            "sent {len} messages over. Msg received with an average of {avg:?} delays to the expected LATENCY"
+        );
 
         for (i, delay) in delays.iter().copied().enumerate().take(10) {
             println!("[{i}]: additional latency of {delay:?}");

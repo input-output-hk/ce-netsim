@@ -1,8 +1,8 @@
 use crate::{data::Data, node::NodeId};
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use std::{
     fmt::{self},
-    sync::{atomic::AtomicU64, Arc},
+    sync::{Arc, atomic::AtomicU64},
 };
 
 /// a generator for monotonicaly increasing **unique** [`PacketId`]

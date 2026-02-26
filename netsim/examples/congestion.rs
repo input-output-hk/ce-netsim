@@ -24,10 +24,7 @@ fn main() -> Result<()> {
     let mut network = SimContext::<Payload>::new()?;
 
     // Sender with a very small upload buffer (32 KB)
-    let mut sender = network
-        .open()
-        .set_upload_buffer(32 * 1_024)
-        .build()?;
+    let mut sender = network.open().set_upload_buffer(32 * 1_024).build()?;
 
     let receiver = network.open().build()?;
 

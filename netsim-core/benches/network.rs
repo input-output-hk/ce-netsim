@@ -1,6 +1,6 @@
 use criterion::{
-    black_box, criterion_group, criterion_main, measurement::WallTime, BenchmarkGroup, Criterion,
-    Throughput,
+    BenchmarkGroup, Criterion, Throughput, black_box, criterion_group, criterion_main,
+    measurement::WallTime,
 };
 use netsim_core::{
     data::Data,

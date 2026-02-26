@@ -9,7 +9,7 @@ pub mod stats;
 
 // convenient re-export of `netsim_core` core objects
 pub use netsim_core::{
-    data::Data, Bandwidth, Latency, LinkId, NodeId, Packet, PacketBuilder, PacketId, PacketLoss,
+    Bandwidth, Latency, LinkId, NodeId, Packet, PacketBuilder, PacketId, PacketLoss, data::Data,
 };
 
 pub use self::{

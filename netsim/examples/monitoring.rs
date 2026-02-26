@@ -21,7 +21,10 @@ impl Data for Msg {
 fn main() -> Result<()> {
     let mut network = SimContext::<Msg>::new()?;
 
-    let mut n1 = network.open().set_upload_bandwidth("1mbps".parse()?).build()?;
+    let mut n1 = network
+        .open()
+        .set_upload_bandwidth("1mbps".parse()?)
+        .build()?;
     let mut n2 = network.open().build()?;
     let mut n3 = network.open().build()?;
 
@@ -76,17 +79,13 @@ fn main() -> Result<()> {
     for link in &stats.links {
         println!(
             "  Link {:?}: latency={} | bandwidth={} | loss={:?} | in-transit={} bytes",
-            link.id,
-            link.latency,
-            link.bandwidth,
-            link.packet_loss,
-            link.bytes_in_transit,
+            link.id, link.latency, link.bandwidth, link.packet_loss, link.bytes_in_transit,
         );
     }
 
     // Drain receivers so shutdown is clean
-    thread::spawn(move || { while n2.try_recv_packet().is_ok() {} });
-    thread::spawn(move || { while n3.try_recv_packet().is_ok() {} });
+    thread::spawn(move || while n2.try_recv_packet().is_ok() {});
+    thread::spawn(move || while n3.try_recv_packet().is_ok() {});
 
     // Small sleep to let remaining packets through
     thread::sleep(Duration::from_millis(200));

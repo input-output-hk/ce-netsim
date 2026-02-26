@@ -28,10 +28,7 @@ pub struct Link {
 
 impl Default for Link {
     fn default() -> Self {
-        Self::new(
-            Latency::default(),
-            Arc::new(CongestionChannel::default()),
-        )
+        Self::new(Latency::default(), Arc::new(CongestionChannel::default()))
     }
 }
 
