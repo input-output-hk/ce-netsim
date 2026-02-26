@@ -69,8 +69,9 @@ fn emit_comparison_report(cases: &[GeoCase]) {
     for case in cases {
         let vincenty_distance = geo::distance_between_locations_vincenty(case.p1, case.p2);
         let karney_distance = geo::distance_between_locations_karney(case.p1, case.p2);
-        let vincenty_latency = geo::latency_between_locations(case.p1, case.p2, FIBER_SPEED_RATIO)
-            .map(|latency| latency.into_duration().as_micros());
+        let vincenty_latency =
+            geo::latency_between_locations_vincenty(case.p1, case.p2, FIBER_SPEED_RATIO)
+                .map(|latency| latency.into_duration().as_micros());
         let karney_latency =
             geo::latency_between_locations_karney(case.p1, case.p2, FIBER_SPEED_RATIO)
                 .map(|latency| latency.into_duration().as_micros());
@@ -133,7 +134,7 @@ fn bench_latency(c: &mut Criterion, cases: &[GeoCase]) {
         let p2 = case.p2;
         group.bench_function(BenchmarkId::new("vincenty", case.name), |b| {
             b.iter(|| {
-                black_box(geo::latency_between_locations(
+                black_box(geo::latency_between_locations_vincenty(
                     black_box(p1),
                     black_box(p2),
                     FIBER_SPEED_RATIO,

@@ -402,12 +402,22 @@ impl SpheroidDistanceAlgorithm for KarneyInverse {
     }
 }
 
-/// Distance using Vincenty inverse formula.
+/// Reference distance using Vincenty inverse formula.
+///
+/// This is kept for algorithm comparison and testing.
+#[doc(hidden)]
 pub fn distance_between_locations_vincenty(p1: Location, p2: Location) -> Result<f64, GeoError> {
     distance_between_vincenty(p1, p2)
 }
 
-/// Distance using Karney/GeographicLib inverse algorithm.
+/// Distance between two locations using Karney inverse algorithm.
+pub fn distance_between_locations(p1: Location, p2: Location) -> Result<f64, GeoError> {
+    distance_between_locations_karney(p1, p2)
+}
+
+/// Distance using Karney inverse algorithm.
+///
+/// Alias for [`distance_between_locations`].
 pub fn distance_between_locations_karney(p1: Location, p2: Location) -> Result<f64, GeoError> {
     distance_between_karney(p1, p2)
 }
@@ -417,17 +427,31 @@ pub fn latency_between_locations(
     p2: Location,
     sol_fo: f64,
 ) -> Result<Latency, GeoError> {
-    let distance = distance_between_vincenty(p1, p2)?;
+    let distance = distance_between_locations(p1, p2)?;
     latency_from_distance(distance, sol_fo)
 }
 
 /// Latency using Karney/GeographicLib inverse distance.
+///
+/// Alias for [`latency_between_locations`].
 pub fn latency_between_locations_karney(
     p1: Location,
     p2: Location,
     sol_fo: f64,
 ) -> Result<Latency, GeoError> {
-    let distance = distance_between_karney(p1, p2)?;
+    latency_between_locations(p1, p2, sol_fo)
+}
+
+/// Reference latency using Vincenty inverse distance.
+///
+/// This is kept for algorithm comparison and testing.
+#[doc(hidden)]
+pub fn latency_between_locations_vincenty(
+    p1: Location,
+    p2: Location,
+    sol_fo: f64,
+) -> Result<Latency, GeoError> {
+    let distance = distance_between_vincenty(p1, p2)?;
     latency_from_distance(distance, sol_fo)
 }
 
@@ -564,6 +588,20 @@ mod tests {
         let karney = distance_between_locations_karney(p1, p2).unwrap();
 
         assert!((vincenty - karney).abs() < 1.0);
+    }
+
+    #[test]
+    fn default_distance_and_latency_use_karney_for_antipodal_points() {
+        let p1 = Location::try_from_e4(0, 0).unwrap();
+        let p2 = Location::try_from_e4(0, 180_0000).unwrap();
+
+        let distance = distance_between_locations(p1, p2).unwrap();
+        let karney_distance = distance_between_locations_karney(p1, p2).unwrap();
+        assert!((distance - karney_distance).abs() < 1e-6);
+
+        let latency = latency_between_locations(p1, p2, SOL_FO).unwrap();
+        let karney_latency = latency_between_locations_karney(p1, p2, SOL_FO).unwrap();
+        assert_eq!(latency, karney_latency);
     }
 
     #[test]
