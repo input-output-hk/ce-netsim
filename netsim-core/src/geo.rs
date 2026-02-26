@@ -179,6 +179,14 @@ impl Spheroid {
 /// Vincenty inverse formula, parametrized with the number of maximum iterations
 /// for the algorithm
 ///
+/// Known limitation:
+/// this iterative method can fail to converge for nearly antipodal point pairs
+/// (including exact antipodes). In this module, hitting the iteration limit
+/// maps to `GeoError::NonConvergent`.
+///
+/// For an explicit reproduction, see the `antipodal_points_can_fail_to_converge`
+/// test.
+///
 /// [Wikipedia Vincenty formulae](https://en.wikipedia.org/wiki/Vincenty%27s_formulae)
 #[derive(Clone, Debug)]
 struct VincentyInverse {
@@ -194,7 +202,8 @@ impl Default for VincentyInverse {
 trait SpheroidDistanceAlgorithm {
     /// Try to calculate the distance between two points on a spheroid, using a formula.
     ///
-    /// Algorithm can fails to compute, and may return None
+    /// The computation may fail to converge for some point pairs (notably
+    /// nearly antipodal pairs), in which case `None` is returned.
     fn calculate(&self, point1: Location, point2: Location, spheroid: Spheroid) -> Option<f64>;
 }
 
@@ -399,5 +408,16 @@ mod tests {
         let duration = latency.into_duration();
         assert!(duration > std::time::Duration::ZERO);
         assert!(duration < std::time::Duration::from_millis(1));
+    }
+
+    #[test]
+    fn antipodal_points_can_fail_to_converge() {
+        let p1 = Location::try_from_e4(0, 0).unwrap();
+        let p2 = Location::try_from_e4(0, 180_0000).unwrap();
+
+        assert_eq!(
+            latency_between_locations(p1, p2, 1.0).unwrap_err(),
+            GeoError::NonConvergent
+        );
     }
 }
