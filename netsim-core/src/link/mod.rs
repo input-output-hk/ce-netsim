@@ -1,9 +1,10 @@
 mod id;
 
 use crate::{
-    measure::{Bandwidth, CongestionChannel, Latency, PacketLoss, PacketLossController},
+    measure::{Bandwidth, CongestionChannel, Latency, PacketLoss},
     network::Round,
 };
+use rand_core::Rng;
 use std::{sync::Arc, time::Duration};
 
 pub use self::id::LinkId;
@@ -44,7 +45,7 @@ pub struct Link {
     channel_reverse: Arc<CongestionChannel>,
 
     latency: Latency,
-    packet_loss: PacketLossController,
+    packet_loss: PacketLoss,
 }
 
 /// Live per-transit state for a single packet travelling across a link.
@@ -104,19 +105,25 @@ impl Link {
             channel_forward,
             channel_reverse,
             latency,
-            packet_loss: PacketLossController::from_seed(packet_loss, 0),
+            packet_loss,
         }
     }
 
     /// Returns `true` if this packet should be dropped based on the link's
     /// packet loss model.
-    pub fn should_drop_packet(&mut self) -> bool {
-        self.packet_loss.should_drop()
+    ///
+    /// The caller provides `rng` so that all simulation randomness is
+    /// controlled from a single, seedable source in [`Network`]. Any type
+    /// implementing [`RngCore`] is accepted.
+    ///
+    /// [`Network`]: crate::network::Network
+    pub fn should_drop_packet<R: Rng>(&self, rng: &mut R) -> bool {
+        self.packet_loss.should_drop(rng)
     }
 
     /// Returns the packet loss configuration for this link.
     pub fn packet_loss(&self) -> PacketLoss {
-        self.packet_loss.cfg()
+        self.packet_loss
     }
 
     /// Create a live [`LinkChannel`] for a packet travelling in `direction`.

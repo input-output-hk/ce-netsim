@@ -12,6 +12,6 @@ pub use self::{
     download::Download,
     gauge::Gauge,
     latency::Latency,
-    packet_loss::{PacketLoss, PacketLossController},
+    packet_loss::PacketLoss,
     upload::Upload,
 };

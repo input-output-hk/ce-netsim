@@ -10,6 +10,8 @@ use crate::{
     measure::{Bandwidth, Latency},
     node::{Node, NodeId},
 };
+use rand_chacha::ChaChaRng;
+use rand_core::SeedableRng as _;
 use std::{collections::HashMap, time::Duration};
 use thiserror::Error;
 
@@ -51,6 +53,12 @@ pub struct Network<T> {
     ///
     /// ID 0 is an error and shouldn't be given
     id: NodeId,
+
+    /// Centralised RNG for all packet-loss decisions on every link.
+    ///
+    /// A single source guarantees that the simulation is reproducible when
+    /// seeded via [`Network::set_seed`].
+    rng: ChaChaRng,
 }
 
 /// Builder for configuring a new node before registering it with the network.
@@ -273,7 +281,29 @@ where
             round: Round::ZERO,
             transit: LinkedList::new(),
             id: NodeId::ZERO,
+            rng: ChaChaRng::seed_from_u64(0),
         }
+    }
+
+    /// Re-seed the network's random-number generator.
+    ///
+    /// All packet-loss decisions for every link are drawn from a single,
+    /// centralised [`ChaChaRng`]. Calling `set_seed` before running a
+    /// simulation produces a fully deterministic, reproducible sequence of
+    /// drops — useful for regression tests and benchmarks.
+    ///
+    /// The default seed is `0`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use netsim_core::{network::Network, measure::PacketLoss};
+    ///
+    /// let mut network: Network<()> = Network::new();
+    /// network.set_seed(42); // deterministic packet-loss sequence
+    /// ```
+    pub fn set_seed(&mut self, seed: u64) {
+        self.rng = ChaChaRng::seed_from_u64(seed);
     }
 
     /// Returns the shared [`PacketIdGenerator`] for this network.
@@ -394,8 +424,8 @@ where
 
         // Check packet loss before routing (avoids building the full route for dropped packets)
         let edge = LinkId::new((from, to));
-        if let Some(link) = self.links.get_mut(&edge)
-            && link.should_drop_packet()
+        if let Some(link) = self.links.get(&edge)
+            && link.should_drop_packet(&mut self.rng)
         {
             return Ok(());
         }
