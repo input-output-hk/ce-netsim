@@ -94,6 +94,15 @@ impl CongestionChannel {
         if update {
             let capacity = self.bandwidth().capacity(duration);
 
+            debug_assert!(
+                capacity > 0 || self.bandwidth().bits_per_sec() == 0 || duration.is_zero(),
+                "Bandwidth {}bps yields 0 bytes in a {:?} step — packets on this channel \
+                 will stall silently. Minimum step for this bandwidth: {:?}.",
+                self.bandwidth().bits_per_sec(),
+                duration,
+                self.bandwidth().minimum_step_duration(),
+            );
+
             self.gauge.set_maximum_capacity(capacity);
             self.gauge.free(u64::MAX);
         }

@@ -445,11 +445,61 @@ where
         NetworkStats { nodes, links }
     }
 
+    /// Returns the minimum step [`Duration`] needed so that every configured
+    /// bandwidth channel can transfer at least 1 byte per call to
+    /// [`advance_with`](Network::advance_with).
+    ///
+    /// Computed as the maximum of [`Bandwidth::minimum_step_duration`] across
+    /// every node's upload/download channel and every link's bandwidth channel.
+    /// Returns [`Duration::ZERO`] for an empty network or when all configured
+    /// bandwidths are zero.
+    ///
+    /// If you pass a `duration` smaller than this value to `advance_with`, the
+    /// most constrained channel will yield 0 bytes per step and packets on that
+    /// route will stall silently. Check this after configuring your network:
+    ///
+    /// ```
+    /// # use netsim_core::{network::Network, Bandwidth};
+    /// let mut network: Network<()> = Network::new();
+    /// let a = network.new_node().build();
+    /// let b = network.new_node().build();
+    /// network
+    ///     .configure_link(a, b)
+    ///     .set_bandwidth(Bandwidth::new(10_000)) // 10 Kbps
+    ///     .apply();
+    ///
+    /// // ceil(8_000_000 / 10_000) = 800 µs minimum step
+    /// assert_eq!(
+    ///     network.minimum_step_duration(),
+    ///     std::time::Duration::from_micros(800),
+    /// );
+    /// ```
+    ///
+    /// [`Bandwidth::minimum_step_duration`]: crate::measure::Bandwidth::minimum_step_duration
+    pub fn minimum_step_duration(&self) -> Duration {
+        let node_mins = self.nodes.values().flat_map(|node| {
+            [
+                node.upload_bandwidth().minimum_step_duration(),
+                node.download_bandwidth().minimum_step_duration(),
+            ]
+        });
+        let link_mins = self.links.values().map(|link| link.bandwidth().minimum_step_duration());
+        node_mins.chain(link_mins).max().unwrap_or(Duration::ZERO)
+    }
+
     /// Advance the network state and deliver packets that have completed transit.
     ///
     /// `duration` is the simulated time elapsed since the last call. The
     /// provided `handle` closure is called once for each packet that has
     /// fully traversed the network during this step.
+    ///
+    /// ## Bandwidth floor
+    ///
+    /// If `duration` is shorter than [`Network::minimum_step_duration`], the
+    /// most constrained bandwidth channel will yield 0 bytes per step and
+    /// packets on that route will never be delivered. See
+    /// [`Bandwidth`](crate::measure::Bandwidth) for the minimum bandwidth table
+    /// by step size.
     pub fn advance_with<H>(&mut self, duration: Duration, mut handle: H)
     where
         H: FnMut(Packet<T>),

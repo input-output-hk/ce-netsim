@@ -103,6 +103,40 @@ impl Bandwidth {
         self.0.load(Ordering::Relaxed)
     }
 
+    /// Returns the minimum step [`Duration`] that yields ≥ 1 byte from
+    /// [`Bandwidth::capacity`].
+    ///
+    /// Derived from the capacity formula: `capacity = bps × µs / 8_000_000`.
+    /// Solving for the smallest `µs` that gives ≥ 1 byte:
+    /// `µs_min = ⌈8_000_000 / bps⌉`.
+    ///
+    /// Returns [`Duration::ZERO`] when bandwidth is zero (capacity is always 0
+    /// regardless of step size — no step helps).
+    ///
+    /// Use this to choose a suitable `duration` for [`Network::advance_with`],
+    /// or check it via [`Network::minimum_step_duration`] across the whole
+    /// network.
+    ///
+    /// ```
+    /// # use netsim_core::measure::Bandwidth;
+    /// # use std::time::Duration;
+    /// // 40 Kbps is the minimum for the 200 µs netsim default step.
+    /// assert_eq!(
+    ///     Bandwidth::new(40_000).minimum_step_duration(),
+    ///     Duration::from_micros(200),
+    /// );
+    /// ```
+    ///
+    /// [`Network::advance_with`]: crate::network::Network::advance_with
+    /// [`Network::minimum_step_duration`]: crate::network::Network::minimum_step_duration
+    pub fn minimum_step_duration(&self) -> Duration {
+        let bps = self.bits_per_sec();
+        if bps == 0 {
+            return Duration::ZERO;
+        }
+        Duration::from_micros(8_000_000u64.div_ceil(bps))
+    }
+
     /// Overwrites this bandwidth with a new value.
     pub fn set(&self, this: Bandwidth) {
         self.0
@@ -367,6 +401,32 @@ mod tests {
         original.set(Bandwidth::new(80_000_000)); // 80 Mbps
         assert_eq!(clone.bits_per_sec(), 40_000_000);
         assert_eq!(original.bits_per_sec(), 80_000_000);
+    }
+
+    #[test]
+    fn minimum_step_duration() {
+        // 8 Mbps: ceil(8_000_000 / 8_000_000) = 1 µs
+        assert_eq!(
+            Bandwidth::new(8_000_000).minimum_step_duration(),
+            Duration::from_micros(1)
+        );
+        // 40 Kbps: ceil(8_000_000 / 40_000) = 200 µs (netsim multiplexer default step)
+        assert_eq!(
+            Bandwidth::new(40_000).minimum_step_duration(),
+            Duration::from_micros(200)
+        );
+        // 1 Kbps: ceil(8_000_000 / 1_000) = 8_000 µs = 8 ms
+        assert_eq!(
+            Bandwidth::new(1_000).minimum_step_duration(),
+            Duration::from_micros(8_000)
+        );
+        // 1 bps: ceil(8_000_000 / 1) = 8_000_000 µs = 8 s
+        assert_eq!(
+            Bandwidth::new(1).minimum_step_duration(),
+            Duration::from_micros(8_000_000)
+        );
+        // Zero bandwidth: no step size helps
+        assert_eq!(Bandwidth::new(0).minimum_step_duration(), Duration::ZERO);
     }
 
     #[test]

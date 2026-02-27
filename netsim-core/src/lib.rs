@@ -230,6 +230,39 @@ pub use self::{
 };
 
 #[test]
+fn minimum_step_duration_reflects_most_constrained_channel() {
+    let mut network = Network::<()>::new();
+
+    // Empty network: no channels, no constraint.
+    assert_eq!(network.minimum_step_duration(), Duration::ZERO);
+
+    let a = network.new_node().build();
+    let b = network.new_node().build();
+
+    // Default node bandwidth is MAX — minimum step is 1 µs, not a concern.
+    // Add a 10 Kbps link: ceil(8_000_000 / 10_000) = 800 µs.
+    network
+        .configure_link(a, b)
+        .set_bandwidth(Bandwidth::new(10_000))
+        .apply();
+    assert_eq!(
+        network.minimum_step_duration(),
+        Duration::from_micros(800),
+    );
+
+    // Adding a slower node upload tightens the constraint further.
+    // 1 Kbps upload: ceil(8_000_000 / 1_000) = 8_000 µs.
+    network
+        .new_node()
+        .set_upload_bandwidth(Bandwidth::new(1_000))
+        .build();
+    assert_eq!(
+        network.minimum_step_duration(),
+        Duration::from_micros(8_000),
+    );
+}
+
+#[test]
 fn simple() {
     let mut network = Network::<()>::new();
     let n1 = network.new_node().build();
