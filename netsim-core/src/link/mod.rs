@@ -127,16 +127,18 @@ mod tests {
     use crate::measure::Bandwidth;
 
     // 1 byte/µs = 1_000_000 bytes/sec (minimum representable bandwidth)
+    #[allow(clippy::declare_interior_mutable_const)]
     const BW: Bandwidth = Bandwidth::new(1, Duration::from_micros(1));
 
     #[test]
     fn default() {
         let link = Link::default();
+        let max = Bandwidth::MAX;
 
         assert_eq!(link.pending, 0);
         assert_eq!(link.round, Round::ZERO);
         assert_eq!(link.latency, Latency::default());
-        assert_eq!(link.channel.bandwidth(), &Bandwidth::MAX);
+        assert_eq!(link.channel.bandwidth(), &max);
     }
 
     #[test]

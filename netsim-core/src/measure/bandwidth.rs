@@ -324,10 +324,8 @@ mod tests {
         // With a large enough duration the product overflows u128 → saturates to u64::MAX.
         // 1 second = 1_000_000 µs; bpu * 1_000_000 = (u64::MAX / 1_000_000) * 1_000_000
         // which is close to but not over u64::MAX, so we need a longer duration.
-        assert_eq!(
-            Bandwidth::MAX.capacity(Duration::from_secs(1_000_000)),
-            u64::MAX
-        );
+        let max = Bandwidth::MAX;
+        assert_eq!(max.capacity(Duration::from_secs(1_000_000)), u64::MAX);
     }
 
     #[test]

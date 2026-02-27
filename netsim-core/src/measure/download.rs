@@ -117,6 +117,7 @@ mod tests {
     use crate::measure::Bandwidth;
 
     // 1 byte/µs = 1_000_000 bytes/sec (minimum representable bandwidth)
+    #[allow(clippy::declare_interior_mutable_const)]
     const BW: Bandwidth = Bandwidth::new(1, Duration::from_micros(1));
 
     #[test]

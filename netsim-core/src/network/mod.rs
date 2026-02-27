@@ -132,7 +132,9 @@ pub enum RouteError {
     ///
     /// Use [`Network::configure_link`] to set up a direct connection
     /// between them before sending packets.
-    #[error("Link ({link:?}) Not Found: nodes are not directly connected, call configure_link first")]
+    #[error(
+        "Link ({link:?}) Not Found: nodes are not directly connected, call configure_link first"
+    )]
     LinkNotFound { link: LinkId },
 }
 

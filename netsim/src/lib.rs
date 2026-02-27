@@ -48,6 +48,9 @@ mod tests {
         let mut n1 = network.open().build().unwrap();
         let mut n2 = network.open().build().unwrap();
 
+        // Nodes must be connected with configure_link before packets can be sent.
+        network.configure_link(n1.id(), n2.id()).apply().unwrap();
+
         let packet_id = n1.send_to(n2.id(), Msg::new()).unwrap();
 
         let packet = n2

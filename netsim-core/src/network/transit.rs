@@ -101,6 +101,7 @@ mod tests {
     use std::sync::Arc;
 
     // 1 byte/µs = 1_000_000 bytes/sec (minimum representable bandwidth)
+    #[allow(clippy::declare_interior_mutable_const)]
     const BD: Bandwidth = Bandwidth::new(1, Duration::from_micros(1));
 
     #[test]

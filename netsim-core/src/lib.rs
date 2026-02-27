@@ -69,6 +69,40 @@ let packet = Packet::builder(network.packet_id_generator())
 # Ok(()) }; f().unwrap();
 ```
 
+# Connecting nodes
+
+Nodes are **not** connected by default. Before sending any packet between two nodes,
+you must configure a link between them using [`Network::configure_link`]. Without a
+link, [`Network::send`] will return a [`RouteError::LinkNotFound`] error.
+
+```
+# use netsim_core::network::Network;
+# fn f() -> anyhow::Result<()> {
+# let mut network: Network<()> = Network::new();
+# let n1 = network.new_node().build();
+# let n2 = network.new_node().build();
+// Connect n1 and n2 with default latency and bandwidth
+network.configure_link(n1, n2).apply();
+# Ok(()) }; f().unwrap();
+```
+
+You can also set specific latency and bandwidth for the link:
+
+```
+# use netsim_core::{network::Network, Latency, Bandwidth};
+# use std::time::Duration;
+# fn f() -> anyhow::Result<()> {
+# let mut network: Network<()> = Network::new();
+# let n1 = network.new_node().build();
+# let n2 = network.new_node().build();
+network
+  .configure_link(n1, n2)
+  .set_latency(Latency::new(Duration::from_millis(20)))
+  .set_bandwidth("100mbps".parse()?)
+  .apply();
+# Ok(()) }; f().unwrap();
+```
+
 # Sending packets
 
 Now sending a packet is easy: just call [`Network::send`]
@@ -80,6 +114,7 @@ Now sending a packet is easy: just call [`Network::send`]
 # let mut network: Network<Data> = Network::new();
 # let n1 = network.new_node().build();
 # let n2 = network.new_node().build();
+# network.configure_link(n1, n2).apply();
 # let packet = Packet::builder(network.packet_id_generator()).from(n1).to(n2).data(()).build().unwrap();
 let packet_id = network.send(packet)?;
 # Ok(()) }; f().unwrap();
@@ -98,13 +133,14 @@ moves.
 # let mut network: Network<Data> = Network::new();
 # let n1 = network.new_node().build();
 # let n2 = network.new_node().build();
+# network.configure_link(n1, n2).apply();
 # let packet = Packet::builder(network.packet_id_generator()).from(n1).to(n2).data(()).build().unwrap();
 # let _ = network.send(packet)?;
 network.advance_with(
   Duration::from_millis(300),
   |packet| {
     // handle packets that are finalised
-    // onlhy packets that are completed will be called by this handle
+    // only packets that are completed will be called by this handle
   }
 );
 # Ok(()) }; f().unwrap();
@@ -134,7 +170,7 @@ use std::time::Duration;
 pub use self::{
     link::LinkId,
     measure::{Bandwidth, Latency, PacketLoss},
-    network::{LinkBuilder, Network, Packet, PacketBuilder, PacketId},
+    network::{LinkBuilder, Network, Packet, PacketBuilder, PacketId, RouteError, SendError},
     node::NodeId,
     stats::{LinkStats, NetworkStats, NodeStats},
 };
@@ -144,6 +180,9 @@ fn simple() {
     let mut network = Network::<()>::new();
     let n1 = network.new_node().build();
     let n2 = network.new_node().build();
+
+    network.configure_link(n1, n2).apply();
+
     let packet = Packet::builder(network.packet_id_generator())
         .from(n1)
         .to(n2)

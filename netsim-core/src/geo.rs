@@ -326,14 +326,20 @@ impl TryFrom<f64> for PathEfficiency {
 
 impl fmt::Display for PathEfficiency {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut percent = format!("{:.2}", self.as_percent());
-        while percent.ends_with('0') {
-            percent.pop();
+        // Work in integer centipercent (percent * 100) to avoid heap allocation.
+        // e.g. 0.5 → 5000 centipercent → "50%"
+        //      0.755 → 7550 → "75.5%"
+        //      0.3333 → 3333 → "33.33%"
+        let centipercent = (self.as_percent() * 100.0).round() as u32;
+        let whole = centipercent / 100;
+        let frac = centipercent % 100;
+        if frac == 0 {
+            write!(f, "{whole}%")
+        } else if frac.is_multiple_of(10) {
+            write!(f, "{whole}.{}%", frac / 10)
+        } else {
+            write!(f, "{whole}.{frac:02}%")
         }
-        if percent.ends_with('.') {
-            percent.pop();
-        }
-        write!(f, "{percent}%")
     }
 }
 

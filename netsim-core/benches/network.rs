@@ -10,6 +10,7 @@ use netsim_core::{
 use std::time::Duration;
 
 const MESSAGE_SIZE: u64 = 100_000_000;
+#[allow(clippy::declare_interior_mutable_const)]
 const BANDWIDTH: Bandwidth = Bandwidth::new(10 * 1_024, Duration::from_secs(1));
 
 struct TestData;

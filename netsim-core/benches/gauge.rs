@@ -8,6 +8,7 @@ use netsim_core::{
 };
 use std::{sync::Arc, time::Duration};
 
+#[allow(clippy::declare_interior_mutable_const)]
 const BD_1KBPS: Bandwidth = Bandwidth::new(1_024, Duration::from_secs(1));
 const RESERVE_SIZE: u64 = 0xF7;
 
