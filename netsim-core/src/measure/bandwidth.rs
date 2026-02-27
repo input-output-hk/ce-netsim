@@ -250,6 +250,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::identity_op)] // `1 * M` and `1 * G` are intentional: they read as "1 MiB" and "1 GiB"
     fn print_bandwidth() {
         // Values must be exact multiples of 1_000_000 (bytes/µs granularity).
         // Bandwidth::new(v, 1s) stores v / 1_000_000 bytes/µs; Display shows

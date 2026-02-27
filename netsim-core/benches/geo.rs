@@ -14,6 +14,7 @@ fn location(latitude_e4: i32, longitude_e4: i32) -> Location {
     Location::try_from_e4(latitude_e4, longitude_e4).expect("benchmark coordinate must be valid")
 }
 
+#[allow(clippy::zero_prefixed_literal)] // e4 fixed-point coords: `-0_1278` reads as -0.1278° (London longitude)
 fn benchmark_cases() -> [GeoCase; 5] {
     [
         GeoCase {

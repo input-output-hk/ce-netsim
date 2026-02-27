@@ -785,6 +785,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::zero_prefixed_literal)] // e4 fixed-point coords: `0_0100` reads as 0.0100°
     fn short_distance_keeps_microsecond_precision() {
         let p1 = Location::try_from_e4(0, 0).unwrap();
         let p2 = Location::try_from_e4(0_0100, 0).unwrap();
