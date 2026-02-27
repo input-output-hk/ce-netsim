@@ -1,14 +1,14 @@
 use super::{Packet, Round, SendError};
 use crate::{
     data::Data,
-    link::Link,
+    link::LinkChannel,
     measure::{Download, Upload},
 };
 use std::time::Duration;
 
 pub struct Transit<T> {
     upload: Upload,
-    link: Link,
+    link: LinkChannel,
     download: Download,
     data: Packet<T>,
 }
@@ -19,7 +19,7 @@ where
 {
     pub(crate) fn new(
         mut upload: Upload,
-        link: Link,
+        link: LinkChannel,
         download: Download,
         data: Packet<T>,
     ) -> Result<Self, SendError> {
@@ -94,11 +94,11 @@ where
 mod tests {
     use super::*;
     use crate::{
-        measure::{Bandwidth, CongestionChannel, Latency},
+        link::{Link, LinkDirection},
+        measure::{Bandwidth, Latency, PacketLoss},
         network::{Route, packet::PacketIdGenerator},
         node::{Node, NodeId},
     };
-    use std::sync::Arc;
 
     // 1 byte/µs = 1_000_000 bytes/sec (minimum representable bandwidth)
     #[allow(clippy::declare_interior_mutable_const)]
@@ -107,7 +107,7 @@ mod tests {
     #[test]
     fn simple_case() {
         let sender: Node<[u8; 1042]> = Node::new(NodeId::ZERO);
-        let link = Link::new(Latency::ZERO, Arc::new(CongestionChannel::new(BD)));
+        let link = Link::new(Latency::ZERO, BD, PacketLoss::default());
         let recipient: Node<[u8; 1042]> = Node::new(NodeId::ONE);
         let data = Packet::builder(&PacketIdGenerator::new())
             .from(sender.id())
@@ -118,7 +118,7 @@ mod tests {
 
         let transit = Route::builder()
             .upload(&sender)
-            .link(&link)
+            .link(&link, LinkDirection::Forward)
             .download(&recipient)
             .build()
             .unwrap()

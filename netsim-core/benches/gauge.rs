@@ -1,10 +1,8 @@
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use netsim_core::{
     data::Data,
-    link::Link,
     measure::{Bandwidth, CongestionChannel, Gauge, Latency, Upload},
-    network::{Packet, PacketIdGenerator, Round, Route},
-    node::{Node, NodeId},
+    network::{Network, Packet, Round},
 };
 use std::{sync::Arc, time::Duration};
 
@@ -73,25 +71,25 @@ impl Data for TestData {
 }
 
 fn transit(c: &mut Criterion) {
-    let sender: Node<TestData> = Node::new(NodeId::ZERO);
-    let link = Link::new(Latency::ZERO, Arc::new(CongestionChannel::new(BD_1KBPS)));
-    let recipient: Node<TestData> = Node::new(NodeId::ONE);
-    let data = Packet::builder(&PacketIdGenerator::new())
-        .from(sender.id())
-        .to(recipient.id())
+    let mut network: Network<TestData> = Network::new();
+    let sender = network.new_node().build();
+    let recipient = network.new_node().build();
+    network
+        .configure_link(sender, recipient)
+        .set_bandwidth(BD_1KBPS)
+        .set_latency(Latency::ZERO)
+        .apply();
+
+    let data = Packet::builder(network.packet_id_generator())
+        .from(sender)
+        .to(recipient)
         .data(TestData(u64::MAX))
         .build()
         .unwrap();
     let mut round = Round::ZERO;
 
-    let mut transit = Route::builder()
-        .upload(&sender)
-        .link(&link)
-        .download(&recipient)
-        .build()
-        .unwrap()
-        .transit(data)
-        .unwrap();
+    let route = network.route(sender, recipient).unwrap();
+    let mut transit = route.transit(data).unwrap();
 
     c.bench_function("transit", |b| {
         b.iter(|| {

@@ -73,7 +73,11 @@ impl<T> SimLinkBuilder<'_, T> {
         self
     }
 
-    /// Set the shared bandwidth capacity of this link.
+    /// Set the bandwidth for this link.
+    ///
+    /// The same bandwidth applies to both directions independently — each
+    /// direction has its own congestion channel, so traffic in one direction
+    /// does not consume capacity in the other.
     pub fn set_bandwidth(mut self, bandwidth: netsim_core::Bandwidth) -> Self {
         self.bandwidth = bandwidth;
         self

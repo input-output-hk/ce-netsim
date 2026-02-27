@@ -24,6 +24,7 @@ fn send(c: &mut Criterion) {
     let mut network: Network<TestData> = Network::new();
     let node1 = network.new_node().build();
     let node2 = network.new_node().build();
+    network.configure_link(node1, node2).set_bandwidth(BANDWIDTH).apply();
 
     c.bench_function("send", |b| {
         b.iter(|| {
@@ -51,6 +52,16 @@ fn bench_advance_size(group: &mut BenchmarkGroup<'_, WallTime>, size: usize) {
                 .set_download_bandwidth(BANDWIDTH)
                 .build(),
         );
+    }
+
+    // configure a link between every pair of nodes
+    for i in 0..nodes.len() {
+        for j in (i + 1)..nodes.len() {
+            network
+                .configure_link(nodes[i], nodes[j])
+                .set_bandwidth(BANDWIDTH)
+                .apply();
+        }
     }
 
     // have every nodes send 1 message to each other nodes

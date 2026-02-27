@@ -8,58 +8,104 @@ use std::{sync::Arc, time::Duration};
 
 pub use self::id::LinkId;
 
-/// A link state between two [`Node`]s.
+/// Which direction a packet is travelling across a link.
 ///
-/// The [`Link`] is responsible for maintaining the congestion [`Bandwidth`]
-/// between two nodes and for maintaining the [`Latency`] and [`PacketLoss`].
+/// `LinkId` is symmetric — `(a, b)` and `(b, a)` produce the same key — so
+/// direction must be tracked separately when activating a per-transit
+/// [`LinkChannel`]. `Forward` means `smaller_id → larger_id`; `Reverse` is
+/// the opposite.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LinkDirection {
+    /// Packet is travelling from the node with the smaller [`NodeId`] to the
+    /// node with the larger one.
+    ///
+    /// [`NodeId`]: crate::node::NodeId
+    Forward,
+    /// Packet is travelling from the node with the larger [`NodeId`] to the
+    /// node with the smaller one.
+    Reverse,
+}
+
+/// Configuration for a connection between two [`Node`]s.
+///
+/// A `Link` is the canonical record stored in [`Network`]'s link map. It holds
+/// the latency, packet-loss policy, and the two independent bandwidth channels
+/// (one per direction). It has no per-packet working state — that lives in
+/// [`LinkChannel`], which is created via [`Link::channel`] when a packet
+/// enters transit.
 ///
 /// [`Node`]: crate::node::Node
-/// [`Bandwidth`]: crate::measure::Bandwidth
+/// [`Network`]: crate::network::Network
 #[derive(Debug)]
 pub struct Link {
-    pending: u64,
-    rem_latency: Duration,
+    /// Bandwidth channel for the forward direction (smaller_id → larger_id).
+    channel_forward: Arc<CongestionChannel>,
+    /// Bandwidth channel for the reverse direction (larger_id → smaller_id).
+    channel_reverse: Arc<CongestionChannel>,
 
-    channel: Arc<CongestionChannel>,
     latency: Latency,
     packet_loss: PacketLossController,
+}
+
+/// Live per-transit state for a single packet travelling across a link.
+///
+/// Created from a canonical [`Link`] via [`Link::channel`]. Holds one active
+/// `Arc<CongestionChannel>` (the direction-specific one), the pending byte
+/// count, the latency countdown, and the round guard.
+///
+/// `Transit` and `Route` own a `LinkChannel`; [`Link`] itself does not.
+#[derive(Debug)]
+pub(crate) struct LinkChannel {
+    /// Bytes waiting to exit the latency delay.
+    pending: u64,
+    /// Remaining latency before bytes start flowing.
+    rem_latency: Duration,
+    /// The active directional bandwidth channel.
+    channel: Arc<CongestionChannel>,
     round: Round,
 }
 
 impl Default for Link {
     fn default() -> Self {
-        Self::new(Latency::default(), Arc::new(CongestionChannel::default()))
+        Self::new(Latency::default(), Bandwidth::default(), PacketLoss::default())
     }
 }
 
 impl Link {
-    pub fn new(latency: Latency, channel: Arc<CongestionChannel>) -> Self {
-        Self {
-            pending: 0,
-            rem_latency: latency.into_duration(),
-            channel,
+    /// Create a full-duplex link with independent bandwidth channels per direction.
+    ///
+    /// Both directions are initialised with the same `bandwidth`, but each has
+    /// its own [`CongestionChannel`] so traffic in one direction does not
+    /// consume capacity in the other.
+    pub fn new(latency: Latency, bandwidth: Bandwidth, packet_loss: PacketLoss) -> Self {
+        Self::new_with_channels(
             latency,
-            packet_loss: PacketLossController::from_seed(PacketLoss::default(), 0),
-            round: Round::default(),
-        }
+            Arc::new(CongestionChannel::new(bandwidth.clone())),
+            Arc::new(CongestionChannel::new(bandwidth)),
+            packet_loss,
+        )
     }
 
-    pub fn new_with_loss(
+    /// Low-level constructor — provide pre-built channels directly.
+    ///
+    /// Used in tests that need to share or inspect a specific
+    /// [`CongestionChannel`] (e.g. to verify half-duplex vs full-duplex behaviour).
+    pub(crate) fn new_with_channels(
         latency: Latency,
-        channel: Arc<CongestionChannel>,
+        channel_forward: Arc<CongestionChannel>,
+        channel_reverse: Arc<CongestionChannel>,
         packet_loss: PacketLoss,
     ) -> Self {
         Self {
-            pending: 0,
-            rem_latency: latency.into_duration(),
-            channel,
+            channel_forward,
+            channel_reverse,
             latency,
             packet_loss: PacketLossController::from_seed(packet_loss, 0),
-            round: Round::default(),
         }
     }
 
-    /// Returns `true` if this packet should be dropped based on the link's packet loss model.
+    /// Returns `true` if this packet should be dropped based on the link's
+    /// packet loss model.
     pub fn should_drop_packet(&mut self) -> bool {
         self.packet_loss.should_drop()
     }
@@ -69,13 +115,37 @@ impl Link {
         self.packet_loss.cfg()
     }
 
-    /// create a new [`Link`] off this link. However the pending
-    /// data and the current round and the consummed latency are
-    /// reset
-    pub(crate) fn duplicate(&self) -> Self {
-        Self::new_with_loss(self.latency, self.channel.clone(), self.packet_loss.cfg())
+    /// Create a live [`LinkChannel`] for a packet travelling in `direction`.
+    ///
+    /// The channel shares the same `Arc<CongestionChannel>` as this canonical
+    /// link for the requested direction, so bandwidth consumed by the transit
+    /// is correctly deducted from the shared pool.
+    pub(crate) fn channel(&self, direction: LinkDirection) -> LinkChannel {
+        let channel = match direction {
+            LinkDirection::Forward => Arc::clone(&self.channel_forward),
+            LinkDirection::Reverse => Arc::clone(&self.channel_reverse),
+        };
+        LinkChannel {
+            pending: 0,
+            rem_latency: self.latency.into_duration(),
+            channel,
+            round: Round::ZERO,
+        }
     }
 
+    /// Returns the configured latency for this link.
+    pub fn latency(&self) -> Latency {
+        self.latency
+    }
+
+    /// Returns the configured bandwidth for this link.
+    pub fn bandwidth(&self) -> &Bandwidth {
+        self.channel_forward.bandwidth()
+    }
+}
+
+impl LinkChannel {
+    /// Update the bandwidth capacity of this channel for the current `round`.
     pub fn update_capacity(&mut self, round: Round, duration: Duration) {
         if self.round != round {
             self.round = round;
@@ -88,36 +158,32 @@ impl Link {
         }
     }
 
+    /// Attempt to move `inbound` bytes through the channel.
+    ///
+    /// Bytes are held in `pending` until the latency countdown reaches zero,
+    /// at which point as many bytes as the channel allows are consumed and
+    /// returned as the number of bytes that transited.
     pub fn process(&mut self, inbound: u64) -> u64 {
         self.pending = self.pending.saturating_add(inbound);
 
         if self.rem_latency.is_zero() {
             let transited = self.channel.reserve(self.pending);
-
             self.pending = self.pending.saturating_sub(transited);
-
             transited
         } else {
             0
         }
     }
 
+    /// Returns `true` when all pending bytes have transited and the latency
+    /// countdown has reached zero.
     pub fn completed(&self) -> bool {
         self.pending == 0 && self.rem_latency.is_zero()
     }
 
+    /// Returns the number of bytes currently waiting in this channel's pipeline.
     pub fn bytes_in_transit(&self) -> u64 {
         self.pending
-    }
-
-    /// Returns the configured latency for this link.
-    pub fn latency(&self) -> Latency {
-        self.latency
-    }
-
-    /// Returns the configured bandwidth for this link.
-    pub fn bandwidth(&self) -> &Bandwidth {
-        self.channel.bandwidth()
     }
 }
 
@@ -126,7 +192,7 @@ mod tests {
     use super::*;
     use crate::measure::Bandwidth;
 
-    // 1 byte/µs = 1_000_000 bytes/sec (minimum representable bandwidth)
+    // 1 byte/µs = 1_000_000 bytes/sec
     #[allow(clippy::declare_interior_mutable_const)]
     const BW: Bandwidth = Bandwidth::new(1, Duration::from_micros(1));
 
@@ -135,104 +201,138 @@ mod tests {
         let link = Link::default();
         let max = Bandwidth::MAX;
 
-        assert_eq!(link.pending, 0);
-        assert_eq!(link.round, Round::ZERO);
         assert_eq!(link.latency, Latency::default());
-        assert_eq!(link.channel.bandwidth(), &max);
+        assert_eq!(link.channel_forward.bandwidth(), &max);
+        assert_eq!(link.channel_reverse.bandwidth(), &max);
     }
 
     #[test]
     fn create_link() {
-        let channel = Arc::new(CongestionChannel::new(BW));
-        let link = Link::new(Latency::ZERO, channel);
-
-        assert_eq!(link.bytes_in_transit(), 0);
+        let link = Link::new(Latency::ZERO, BW, PacketLoss::default());
+        let ch = link.channel(LinkDirection::Forward);
+        assert_eq!(ch.bytes_in_transit(), 0);
     }
 
     #[test]
-    fn duplicate() {
-        let channel = Arc::new(CongestionChannel::new(BW));
+    fn channel_resets_state() {
         let latency = Latency::new(Duration::from_secs(1));
-        let mut link1 = Link::new(latency, channel);
+        let link = Link::new(latency, BW, PacketLoss::default());
+        let mut ch = link.channel(LinkDirection::Forward);
         let round = Round::ZERO.next();
 
-        link1.process(24);
-        link1.update_capacity(round, Duration::from_millis(500));
+        ch.process(24);
+        ch.update_capacity(round, Duration::from_millis(500));
 
-        let link2 = link1.duplicate();
+        // A second channel from the same link starts fresh.
+        let ch2 = link.channel(LinkDirection::Forward);
 
-        // pending bytes is reset on duplicate
-        assert_eq!(link1.pending, 24);
-        assert_eq!(link2.pending, 0);
+        assert_eq!(ch.bytes_in_transit(), 24);
+        assert_eq!(ch2.bytes_in_transit(), 0);
+        assert_eq!(ch2.rem_latency, Duration::from_secs(1));
+        assert_eq!(ch2.round, Round::ZERO);
 
-        // round is reset on duplicate
-        assert_eq!(link1.round, Round::ZERO.next());
-        assert_eq!(link2.round, Round::ZERO);
-
-        // latency is reset on duplicate
-        assert_eq!(link1.rem_latency, Duration::from_millis(500));
-        assert_eq!(link2.rem_latency, Duration::from_secs(1));
-
-        assert_eq!(link1.latency, latency);
-        assert_eq!(link2.latency, latency);
-        assert_eq!(link1.channel.capacity(), link2.channel.capacity());
-        assert!(Arc::ptr_eq(&link1.channel, &link2.channel));
+        // Both share the same underlying Arc.
+        assert!(Arc::ptr_eq(&ch.channel, &ch2.channel));
     }
 
     #[test]
     fn process() {
-        let channel = Arc::new(CongestionChannel::new(BW));
-        let mut link = Link::new(Latency::ZERO, channel);
-
+        let mut ch = link_channel(Latency::ZERO, BW);
         let round = Round::ZERO.next();
-        assert_eq!(link.channel.capacity(), 0);
+        assert_eq!(ch.channel.capacity(), 0);
 
-        // we expect 0 bytes since we haven't called the function to update the capacity
-        // of the channel
-        let processed = link.process(24);
+        let processed = ch.process(24);
         assert_eq!(processed, 0);
+        assert_eq!(ch.bytes_in_transit(), 24);
 
-        // the bytes remain in transit until the capacity is updated and the process function
-        // is called again
-        assert_eq!(link.bytes_in_transit(), 24);
+        ch.update_capacity(round, Duration::from_micros(100));
 
-        // 1 byte/µs over 1µs = 1 byte capacity; update with 1µs so capacity is tight
-        link.update_capacity(round, Duration::from_micros(100));
-
-        // we ask the link to process 200 additional bytes to the 24 already
-        // in transit; capacity is 100 bytes, so 24+200=224 but only 100 fit.
-        let processed = link.process(200);
+        let processed = ch.process(200);
         assert_eq!(processed, 100);
-        assert_eq!(link.bytes_in_transit(), 124);
+        assert_eq!(ch.bytes_in_transit(), 124);
 
-        // if we ask for more than remaining then the left over
-        // will remain in the `in_transit` buffer.
-        let processed = link.process(0);
+        let processed = ch.process(0);
         assert_eq!(processed, 0);
-        assert_eq!(link.bytes_in_transit(), 124);
+        assert_eq!(ch.bytes_in_transit(), 124);
     }
 
     #[test]
     fn process_latency() {
-        let channel = Arc::new(CongestionChannel::new(BW));
-        let mut link = Link::new(Latency::new(Duration::from_secs(1)), channel);
-
+        let mut ch = link_channel(Latency::new(Duration::from_secs(1)), BW);
         let round = Round::ZERO.next();
 
-        assert!(!link.rem_latency.is_zero());
-        assert!(!link.completed());
-        assert_eq!(link.bytes_in_transit(), 0);
+        assert!(!ch.rem_latency.is_zero());
+        assert!(!ch.completed());
+        assert_eq!(ch.bytes_in_transit(), 0);
 
-        link.update_capacity(round, Duration::from_millis(500));
-        assert!(!link.rem_latency.is_zero());
-        assert!(!link.completed());
-        assert_eq!(link.bytes_in_transit(), 0);
+        ch.update_capacity(round, Duration::from_millis(500));
+        assert!(!ch.rem_latency.is_zero());
+        assert!(!ch.completed());
 
-        // 1_500ms advance: 500ms remaining latency consumed, 1_000ms left for bandwidth
+        // 1_500ms advance: 500ms latency consumed, 1_000ms left for bandwidth
         // capacity = 1 byte/µs * 1_000_000µs = 1_000_000
-        link.update_capacity(round.next(), Duration::from_millis(1500));
-        assert!(link.rem_latency.is_zero());
-        assert!(link.completed());
-        assert_eq!(link.channel.capacity(), 1_000_000);
+        ch.update_capacity(round.next(), Duration::from_millis(1500));
+        assert!(ch.rem_latency.is_zero());
+        assert!(ch.completed());
+        assert_eq!(ch.channel.capacity(), 1_000_000);
+    }
+
+    /// Verify that forward and reverse channels are fully independent: saturating
+    /// one direction does not consume any capacity from the other.
+    #[test]
+    fn full_duplex_independence() {
+        #[allow(clippy::declare_interior_mutable_const)]
+        const BW100: Bandwidth = Bandwidth::new(100, Duration::from_micros(1));
+
+        let link = Link::new(Latency::ZERO, BW100, PacketLoss::default());
+        let round = Round::ZERO.next();
+
+        let mut fwd = link.channel(LinkDirection::Forward);
+        let mut rev = link.channel(LinkDirection::Reverse);
+
+        fwd.update_capacity(round, Duration::from_micros(1));
+        rev.update_capacity(round, Duration::from_micros(1));
+
+        let transited_fwd = fwd.process(100);
+        assert_eq!(transited_fwd, 100, "forward should get its full 100-byte quota");
+        assert_eq!(fwd.bytes_in_transit(), 0);
+
+        let transited_rev = rev.process(100);
+        assert_eq!(transited_rev, 100, "reverse should be unaffected by forward saturation");
+        assert_eq!(rev.bytes_in_transit(), 0);
+    }
+
+    /// Verify that a shared-channel link demonstrates half-duplex behaviour:
+    /// saturating one direction starves the other.
+    #[test]
+    fn shared_channel_is_half_duplex() {
+        #[allow(clippy::declare_interior_mutable_const)]
+        const BW100: Bandwidth = Bandwidth::new(100, Duration::from_micros(1));
+
+        let channel = Arc::new(CongestionChannel::new(BW100));
+        let link = Link::new_with_channels(
+            Latency::ZERO,
+            Arc::clone(&channel),
+            Arc::clone(&channel),
+            PacketLoss::default(),
+        );
+        let round = Round::ZERO.next();
+
+        let mut fwd = link.channel(LinkDirection::Forward);
+        let mut rev = link.channel(LinkDirection::Reverse);
+
+        fwd.update_capacity(round, Duration::from_micros(1));
+        rev.update_capacity(round, Duration::from_micros(1));
+
+        let transited_fwd = fwd.process(100);
+        assert_eq!(transited_fwd, 100);
+
+        let transited_rev = rev.process(100);
+        assert_eq!(transited_rev, 0, "shared channel: reverse is starved after forward saturates");
+    }
+
+    /// Helper: create a LinkChannel directly from latency + bandwidth.
+    fn link_channel(latency: Latency, bandwidth: Bandwidth) -> LinkChannel {
+        Link::new(latency, bandwidth, PacketLoss::default()).channel(LinkDirection::Forward)
     }
 }

@@ -35,7 +35,7 @@ pub struct LinkStats {
     pub id: LinkId,
     /// Configured latency of this link.
     pub latency: Latency,
-    /// Configured bandwidth capacity of this link.
+    /// Configured bandwidth of this link (applies to both directions independently).
     pub bandwidth: Bandwidth,
     /// Configured packet loss model for this link.
     pub packet_loss: PacketLoss,

@@ -31,7 +31,8 @@ Network::send()
       │ outbound channel (upload bandwidth limit)
       ▼
   [ Link ] ─── latency ──► delivers after N ms of simulated time
-      │          └─ bandwidth (shared by both directions)
+      │          └─ bandwidth_forward (A→B independent channel)
+      │          └─ bandwidth_reverse (B→A independent channel)
       │          └─ packet_loss (probabilistic drop rate)
       ▼
  [ Recipient Node ]
@@ -40,9 +41,9 @@ Network::send()
 Network::advance_with() closure receives the packet
 ```
 
-A **link** is bidirectional and the bandwidth budget is **shared** between
-both directions. If node A is saturating the link to node B, packets going
-from B to A will experience the same congestion.
+A **link** is **full-duplex**: each direction (A→B and B→A) has its own
+independent bandwidth channel. Saturating the link in one direction does
+not affect throughput in the opposite direction.
 
 ## Your message type and the `Data` trait
 

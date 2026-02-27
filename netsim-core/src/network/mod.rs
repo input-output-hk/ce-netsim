@@ -6,11 +6,11 @@ mod transit;
 
 use crate::{
     data::Data,
-    link::{Link, LinkId},
-    measure::{Bandwidth, CongestionChannel, Latency},
+    link::{Link, LinkDirection, LinkId},
+    measure::{Bandwidth, Latency},
     node::{Node, NodeId},
 };
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, time::Duration};
 use thiserror::Error;
 
 pub use self::{
@@ -26,8 +26,8 @@ pub use self::{
 /// The [`Network`] is responsible for maintaining each [`Node`] accountable
 /// of their network activities: Upload and Download congestivity as well as
 /// buffers for sending and receiving data. It is also responsible for
-/// keeping the [`Link`] accountable for the [`Latency`] and the
-/// [`Bandwidth`].
+/// keeping the [`Link`] accountable for the [`Latency`], the per-direction
+/// [`Bandwidth`] channels, and the packet-loss policy.
 ///
 /// See the [crate] documentation for more information on how to
 /// create a network, update the network and, send and receive messages.
@@ -40,14 +40,6 @@ pub struct Network<T> {
 
     nodes: HashMap<NodeId, Node<T>>,
 
-    // consideration:
-    //   based on previous implementation we kept having one `Link` for
-    //   sharing both direction. I.e. if there are a lot of packets going
-    //   in one direction, it will affect the bandwidth of the packet going
-    //   the opposite direction. Maybe we would like to consider having
-    //   a different approach and have the `LinkId` identify also the
-    //   direction of the link.
-    //
     links: HashMap<LinkId, Link>,
 
     round: Round,
@@ -119,7 +111,11 @@ impl<T> LinkBuilder<'_, T> {
         self
     }
 
-    /// Set the shared bandwidth capacity of this link.
+    /// Set the bandwidth for this link.
+    ///
+    /// The same bandwidth applies to both directions independently — each
+    /// direction has its own congestion channel, so traffic in one direction
+    /// does not consume capacity in the other.
     pub fn set_bandwidth(mut self, bandwidth: Bandwidth) -> Self {
         self.bandwidth = bandwidth;
         self
@@ -142,10 +138,7 @@ impl<T> LinkBuilder<'_, T> {
             network,
         } = self;
         let id = LinkId::new((a, b));
-        let channel = Arc::new(CongestionChannel::new(bandwidth));
-        network
-            .links
-            .insert(id, Link::new_with_loss(latency, channel, packet_loss));
+        network.links.insert(id, Link::new(latency, bandwidth, packet_loss));
     }
 }
 
@@ -304,7 +297,10 @@ where
 
     /// Configure the link between two nodes.
     ///
-    /// Returns a [`LinkBuilder`] that allows setting latency and bandwidth.
+    /// Returns a [`LinkBuilder`] that allows setting latency, bandwidth, and
+    /// packet loss. The same bandwidth applies to both directions independently:
+    /// each direction has its own congestion channel so traffic in one direction
+    /// does not consume capacity in the other (full-duplex).
     /// Call [`.apply()`](LinkBuilder::apply) to commit.
     ///
     /// If a link already exists between these nodes it will be replaced.
@@ -352,6 +348,11 @@ where
     ///   nodes. Call [`Network::configure_link`] to establish a direct connection.
     pub fn route(&self, from: NodeId, to: NodeId) -> Result<Route, RouteError> {
         let edge = LinkId::new((from, to));
+        let direction = if from < to {
+            LinkDirection::Forward
+        } else {
+            LinkDirection::Reverse
+        };
 
         let Some(from) = self.nodes.get(&from) else {
             return Err(RouteError::SenderNotFound { sender: from });
@@ -365,7 +366,7 @@ where
 
         let route = RouteBuilder::new()
             .upload(from)
-            .link(link)
+            .link(link, direction)
             .download(to)
             .build()
             .expect("Failed to build a Route");
@@ -435,7 +436,7 @@ where
                 latency: link.latency(),
                 bandwidth: link.bandwidth().clone(),
                 packet_loss: link.packet_loss(),
-                bytes_in_transit: link.bytes_in_transit(),
+                bytes_in_transit: 0,
             })
             .collect();
 

@@ -1,7 +1,7 @@
 use super::{Node, Packet, SendError, transit::Transit};
 use crate::{
     data::Data,
-    link::Link,
+    link::{Link, LinkChannel, LinkDirection},
     measure::{Download, Upload},
 };
 use anyhow::anyhow;
@@ -12,14 +12,14 @@ use anyhow::anyhow;
 #[derive(Default)]
 pub struct RouteBuilder {
     upload: Option<Upload>,
-    link: Option<Link>,
+    link: Option<LinkChannel>,
     download: Option<Download>,
 }
 
 #[derive(Debug)]
 pub struct Route {
     upload: Upload,
-    link: Link,
+    link: LinkChannel,
     download: Download,
 }
 
@@ -42,8 +42,8 @@ impl RouteBuilder {
         self
     }
 
-    pub fn link(mut self, link: &Link) -> Self {
-        self.link = Some(link.duplicate());
+    pub(crate) fn link(mut self, link: &Link, direction: LinkDirection) -> Self {
+        self.link = Some(link.channel(direction));
         self
     }
 
@@ -75,10 +75,6 @@ impl Route {
         &self.upload
     }
 
-    pub fn link(&self) -> &Link {
-        &self.link
-    }
-
     pub fn download(&self) -> &Download {
         &self.download
     }
@@ -95,10 +91,10 @@ impl Route {
 mod tests {
     use super::*;
     use crate::{
-        measure::{Bandwidth, CongestionChannel, Latency},
+        link::LinkDirection,
+        measure::{Bandwidth, Latency, PacketLoss},
         node::NodeId,
     };
-    use std::sync::Arc;
 
     #[test]
     fn builder_missing_sender() {
@@ -119,14 +115,11 @@ mod tests {
     #[test]
     fn builder_missing_recipient() {
         let sender: Node<()> = Node::new(NodeId::ZERO);
-        let link = Link::new(
-            Latency::ZERO,
-            Arc::new(CongestionChannel::new(Bandwidth::MAX)),
-        );
+        let link = Link::new(Latency::ZERO, Bandwidth::MAX, PacketLoss::default());
 
         let error = Route::builder()
             .upload(&sender)
-            .link(&link)
+            .link(&link, LinkDirection::Forward)
             .build()
             .unwrap_err();
 
@@ -136,15 +129,12 @@ mod tests {
     #[test]
     fn build() {
         let sender: Node<()> = Node::new(NodeId::ZERO);
-        let link = Link::new(
-            Latency::ZERO,
-            Arc::new(CongestionChannel::new(Bandwidth::MAX)),
-        );
+        let link = Link::new(Latency::ZERO, Bandwidth::MAX, PacketLoss::default());
         let recipient: Node<()> = Node::new(NodeId::ONE);
 
         let _route = Route::builder()
             .upload(&sender)
-            .link(&link)
+            .link(&link, LinkDirection::Forward)
             .download(&recipient)
             .build()
             .unwrap();
