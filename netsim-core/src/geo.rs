@@ -358,7 +358,7 @@ impl FromStr for PathEfficiency {
 
 /// Speed of light in a vacuum (in meter per second)
 const SPEED_OF_LIGHT: f64 = 299_792_458.0;
-/// baseline propagation speed in fiber (31% of speed of light)
+/// baseline propagation speed in fiber (69% of speed of light)
 const SPEED_OF_FIBER: f64 = SPEED_OF_LIGHT * 0.69;
 
 fn normalize_distance(distance: f64) -> Result<f64, GeoError> {
