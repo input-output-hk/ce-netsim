@@ -168,8 +168,8 @@ impl FromStr for Longitude {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let degrees = parse_coordinate_degrees(s).context("Failed to parse Longitude.")?;
-        Self::from_degrees(degrees).map_err(|error| anyhow!("Failed to parse Longitude {error}"))
+        let degrees = parse_coordinate_degrees(s).context("Failed to parse Longitude")?;
+        Self::from_degrees(degrees).map_err(|error| anyhow!("Failed to parse Longitude: {error}"))
     }
 }
 
