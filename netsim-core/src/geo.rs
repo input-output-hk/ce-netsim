@@ -346,6 +346,18 @@ impl TryFrom<f64> for PathEfficiency {
     }
 }
 
+impl TryFrom<u8> for PathEfficiency {
+    type Error = GeoError;
+
+    /// Converts an integer percentage in `[1, 100]` into a [`PathEfficiency`].
+    ///
+    /// `0` is rejected because zero efficiency is physically meaningless
+    /// (it would imply infinite latency).
+    fn try_from(percent: u8) -> Result<Self, Self::Error> {
+        Self::from_percent(percent as f64)
+    }
+}
+
 impl fmt::Display for PathEfficiency {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Work in integer centipercent (percent * 100) to avoid heap allocation.
@@ -791,6 +803,27 @@ mod tests {
             PathEfficiency::try_from_ratio(0.0).unwrap_err(),
             GeoError::InvalidPathEfficiency { value: 0.0 }
         );
+    }
+
+    #[test]
+    fn path_efficiency_try_from_u8_valid() {
+        // 100% → FULL
+        assert_eq!(PathEfficiency::try_from(100u8).unwrap(), PathEfficiency::FULL);
+        // 50% → HALF
+        assert_eq!(PathEfficiency::try_from(50u8).unwrap(), PathEfficiency::HALF);
+        // try_into() spelling
+        let via_into: PathEfficiency = 75u8.try_into().unwrap();
+        assert!((via_into.as_percent() - 75.0).abs() < 1e-6);
+        // boundary: 1% is the lowest valid value
+        assert!(PathEfficiency::try_from(1u8).is_ok());
+    }
+
+    #[test]
+    fn path_efficiency_try_from_u8_zero_rejected() {
+        assert!(matches!(
+            PathEfficiency::try_from(0u8),
+            Err(GeoError::InvalidPathEfficiency { .. })
+        ));
     }
 
     #[test]
