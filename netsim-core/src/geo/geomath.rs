@@ -45,7 +45,7 @@ pub fn polyval(n: usize, p: &[f64], x: f64) -> f64 {
     y
 }
 
-// Round an angle so taht small values underflow to 0
+// Round an angle so that small values underflow to 0
 pub fn ang_round(x: f64) -> f64 {
     // The makes the smallest gap in x = 1/16 - nextafter(1/16, 0) = 1/2^57
     // for reals = 0.7 pm on the earth if x is an angle in degrees.  (This
