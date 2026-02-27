@@ -235,7 +235,11 @@ impl FromStr for Location {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut parts = s.split(',');
-        let latitude_raw = parts.next().unwrap_or_default();
+        let Some(latitude_raw) = parts.next() else {
+            return Err(anyhow!(
+                "Failed to parse Location: expected format `<latitude>, <longitude>`"
+            ));
+        };
         let Some(longitude_raw) = parts.next() else {
             return Err(anyhow!(
                 "Failed to parse Location: expected format `<latitude>, <longitude>`"
