@@ -786,6 +786,17 @@ mod tests {
     }
 
     #[test]
+    fn latency_is_symmetric() {
+        let p1 = p1();
+        let p2 = p2();
+
+        let forward = latency_between_locations(p1, p2, PATH_EFFICIENCY).unwrap();
+        let backward = latency_between_locations(p2, p1, PATH_EFFICIENCY).unwrap();
+
+        assert_eq!(forward, backward);
+    }
+
+    #[test]
     fn antipodal_points_can_fail_to_converge() {
         let p1 = Location::try_from_e4(0, 0).unwrap();
         let p2 = Location::try_from_e4(0, 180_0000).unwrap();
