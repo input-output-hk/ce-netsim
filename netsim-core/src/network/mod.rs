@@ -117,13 +117,22 @@ impl<T> LinkBuilder<'_, T> {
     }
 }
 
+/// Error returned when a route between two nodes cannot be established.
+///
+/// Nodes are not automatically connected when created — a link must be
+/// explicitly configured via [`Network::configure_link`] before packets
+/// can be sent between them.
 #[derive(Debug, Error)]
 pub enum RouteError {
     #[error("Sender ({sender}) Not Found")]
     SenderNotFound { sender: NodeId },
     #[error("Recipient ({recipient}) Not Found")]
     RecipientNotFound { recipient: NodeId },
-    #[error("Link ({link:?}) Not Found")]
+    /// No link has been configured between the two nodes.
+    ///
+    /// Use [`Network::configure_link`] to set up a direct connection
+    /// between them before sending packets.
+    #[error("Link ({link:?}) Not Found: nodes are not directly connected, call configure_link first")]
     LinkNotFound { link: LinkId },
 }
 
@@ -244,11 +253,20 @@ where
         }
     }
 
-    /// get the route between two nodes.
+    /// Returns the route between two nodes, if one exists.
     ///
-    /// This allows to monitor the transit of packets between two specific
-    /// nodes.
+    /// A route requires both nodes to be present in the network **and** a
+    /// link to have been configured between them via [`Network::configure_link`].
+    /// Nodes that have never had a link configured are not directly reachable
+    /// from each other, and this method will return [`RouteError::LinkNotFound`]
+    /// in that case.
     ///
+    /// # Errors
+    ///
+    /// - [`RouteError::SenderNotFound`] — `from` node does not exist in the network.
+    /// - [`RouteError::RecipientNotFound`] — `to` node does not exist in the network.
+    /// - [`RouteError::LinkNotFound`] — no link has been configured between the two
+    ///   nodes. Call [`Network::configure_link`] to establish a direct connection.
     pub fn route(&self, from: NodeId, to: NodeId) -> Result<Route, RouteError> {
         let edge = LinkId::new((from, to));
 
@@ -258,15 +276,13 @@ where
         let Some(to) = self.nodes.get(&to) else {
             return Err(RouteError::RecipientNotFound { recipient: to });
         };
-        let link = self
-            .links
-            .get(&edge)
-            .map(|l| l.duplicate())
-            .unwrap_or_default();
+        let Some(link) = self.links.get(&edge) else {
+            return Err(RouteError::LinkNotFound { link: edge });
+        };
 
         let route = RouteBuilder::new()
             .upload(from)
-            .link(&link)
+            .link(link)
             .download(to)
             .build()
             .expect("Failed to build a Route");
@@ -274,15 +290,17 @@ where
         Ok(route)
     }
 
-    /// send a packet through the network
+    /// Send a packet through the network.
     ///
-    /// # Error
+    /// # Errors
     ///
-    /// This will return an error if the _route_ cannot be built
-    /// (receiver or sender not found).
-    ///
-    /// If the message cannot be sent because the sender's buffer
-    /// is full.
+    /// - [`SendError::Route`] wrapping [`RouteError::SenderNotFound`] or
+    ///   [`RouteError::RecipientNotFound`] if either node does not exist.
+    /// - [`SendError::Route`] wrapping [`RouteError::LinkNotFound`] if no link
+    ///   has been configured between the sender and recipient. Call
+    ///   [`Network::configure_link`] to establish a direct connection first.
+    /// - [`SendError::SenderBufferFull`] if the sender's upload buffer is at
+    ///   capacity.
     ///
     pub fn send(&mut self, packet: Packet<T>) -> Result<(), SendError> {
         let from = packet.from();
