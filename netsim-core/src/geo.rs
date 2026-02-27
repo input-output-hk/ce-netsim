@@ -76,12 +76,17 @@ impl Latitude {
         self.0
     }
 
-    fn to_degrees(self) -> f64 {
+    /// Returns the latitude as decimal degrees.
+    pub fn as_degrees(self) -> f64 {
         self.0 as f64 / 10_000.0
     }
 
+    fn to_degrees(self) -> f64 {
+        self.as_degrees()
+    }
+
     fn to_radians(self) -> f64 {
-        self.to_degrees().to_radians()
+        self.as_degrees().to_radians()
     }
 }
 
@@ -149,12 +154,17 @@ impl Longitude {
         self.0
     }
 
-    fn to_degrees(self) -> f64 {
+    /// Returns the longitude as decimal degrees.
+    pub fn as_degrees(self) -> f64 {
         self.0 as f64 / 10_000.0
     }
 
+    fn to_degrees(self) -> f64 {
+        self.as_degrees()
+    }
+
     fn to_radians(self) -> f64 {
-        self.to_degrees().to_radians()
+        self.as_degrees().to_radians()
     }
 }
 
@@ -887,6 +897,30 @@ mod tests {
             GeoError::InvalidPathEfficiency { value: -0.1 }
         );
         assert!("abc".parse::<PathEfficiency>().is_err());
+    }
+
+    #[test]
+    fn latitude_as_degrees() {
+        let lat = Latitude::try_from_e4(48_8534).unwrap();
+        assert!((lat.as_degrees() - 48.8534).abs() < 1e-4);
+
+        let lat_neg = Latitude::try_from_e4(-90_0000).unwrap();
+        assert_eq!(lat_neg.as_degrees(), -90.0);
+
+        let lat_zero = Latitude::try_from_e4(0).unwrap();
+        assert_eq!(lat_zero.as_degrees(), 0.0);
+    }
+
+    #[test]
+    fn longitude_as_degrees() {
+        let lon = Longitude::try_from_e4(-122_4194).unwrap();
+        assert!((lon.as_degrees() - -122.4194).abs() < 1e-4);
+
+        let lon_max = Longitude::try_from_e4(180_0000).unwrap();
+        assert_eq!(lon_max.as_degrees(), 180.0);
+
+        let lon_zero = Longitude::try_from_e4(0).unwrap();
+        assert_eq!(lon_zero.as_degrees(), 0.0);
     }
 
     #[test]
