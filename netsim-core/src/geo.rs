@@ -5,7 +5,7 @@ use self::geodesic::Geodesic;
 
 use crate::measure::Latency;
 use anyhow::{Context as _, anyhow, ensure};
-use std::{fmt, str::FromStr};
+use std::{fmt, str::FromStr, sync::OnceLock};
 use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Error)]
@@ -388,13 +388,33 @@ fn distance_between_vincenty(point1: Location, point2: Location) -> Result<f64, 
     normalize_distance(distance)
 }
 
+// The Earth Geodesic is constant (WGS-84 parameters never change). Cache it
+// as a static so `Geodesic::new` — which computes ~42 polynomial coefficients —
+// runs exactly once per process rather than on every distance/latency call.
+static EARTH_GEODESIC: OnceLock<Geodesic> = OnceLock::new();
+
+fn earth_geodesic() -> &'static Geodesic {
+    EARTH_GEODESIC.get_or_init(|| {
+        let s = Spheroid::earth();
+        Geodesic::new(s.alpha, s.inv_flattening)
+    })
+}
+
 // return the distance in meter between point1 and point2
 fn distance_between_karney(point1: Location, point2: Location) -> Result<f64, GeoError> {
-    let distance = KarneyInverse
-        .calculate(point1, point2, Spheroid::earth())
-        .ok_or(GeoError::NonFiniteComputation)?;
+    let distance = earth_geodesic()
+        .inverse_distance(
+            point1.latitude.to_degrees(),
+            point1.longitude.to_degrees(),
+            point2.latitude.to_degrees(),
+            point2.longitude.to_degrees(),
+        );
 
-    normalize_distance(distance)
+    if distance.is_finite() && distance >= 0.0 {
+        normalize_distance(distance)
+    } else {
+        Err(GeoError::NonFiniteComputation)
+    }
 }
 
 fn latency_from_distance(
@@ -469,13 +489,6 @@ impl Default for VincentyInverse {
         Self { nb_iter: 50 }
     }
 }
-
-/// Karney inverse geodesic algorithm via GeographicLib.
-///
-/// This method is robust for nearly antipodal point pairs where Vincenty may
-/// fail to converge.
-#[derive(Clone, Debug, Default)]
-struct KarneyInverse;
 
 trait SpheroidDistanceAlgorithm {
     /// Try to calculate the distance between two points on a spheroid, using a formula.
@@ -574,24 +587,6 @@ impl SpheroidDistanceAlgorithm for VincentyInverse {
         let s = b * cap_a * (sigma - delta_sigma);
 
         Some(s)
-    }
-}
-
-impl SpheroidDistanceAlgorithm for KarneyInverse {
-    fn calculate(&self, point1: Location, point2: Location, spheroid: Spheroid) -> Option<f64> {
-        let geodesic = Geodesic::new(spheroid.alpha, spheroid.inv_flattening);
-        let distance = geodesic.inverse_distance(
-            point1.latitude.to_degrees(),
-            point1.longitude.to_degrees(),
-            point2.latitude.to_degrees(),
-            point2.longitude.to_degrees(),
-        );
-
-        if distance.is_finite() && distance >= 0.0 {
-            Some(distance)
-        } else {
-            None
-        }
     }
 }
 
