@@ -37,6 +37,7 @@ pub fn sum(u: f64, v: f64) -> (f64, f64) {
 
 // Evaluate a polynomial
 pub fn polyval(n: usize, p: &[f64], x: f64) -> f64 {
+    debug_assert!(p.len() > n, "polyval: slice too short (len={}, n={})", p.len(), n);
     let mut y = p[0];
     for val in &p[1..=n] {
         y = y * x + val;
