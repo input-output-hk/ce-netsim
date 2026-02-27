@@ -29,6 +29,20 @@ struct NodeEntry<T> {
     dropped: Arc<AtomicU64>,
 }
 
+/// The primary entry point for the network simulator.
+///
+/// `SimContext` owns a background multiplexer thread that drives simulation
+/// time and delivers completed packets to registered sockets. Create nodes
+/// with [`open`](Self::open), connect them with
+/// [`configure_link`](Self::configure_link), and call
+/// [`shutdown`](Self::shutdown) when done to join the background thread.
+///
+/// # Note
+///
+/// `SimContext` does not implement [`Drop`]. If it is dropped without calling
+/// [`shutdown`](Self::shutdown), the background thread will keep running until
+/// the internal channel disconnects, at which point it exits on its own.
+/// For clean shutdown and error propagation, always call `shutdown` explicitly.
 pub struct SimContext<T> {
     commands: CommandSender<T>,
 
@@ -115,6 +129,11 @@ where
         })
     }
 
+    /// Open a new socket and return a builder to configure it.
+    ///
+    /// The returned `SimSocketBuilder` lets you set per-node bandwidth and
+    /// buffer limits before calling `.build()`
+    /// to register the node with the multiplexer and obtain a [`SimSocket`](crate::SimSocket).
     pub fn open(&mut self) -> SimSocketBuilder<'_, T> {
         SimSocketBuilder::new(self.commands.clone(), self.packet_id_generator.clone())
     }
@@ -145,6 +164,11 @@ where
         }
     }
 
+    /// Stop the background multiplexer thread and wait for it to exit.
+    ///
+    /// Returns any error produced by the multiplexer thread. This should be
+    /// called explicitly instead of relying on drop — see the struct-level
+    /// note on [`SimContext`].
     pub fn shutdown(self) -> Result<()> {
         self.stop.toggle();
 
@@ -302,7 +326,7 @@ where
     }
 }
 
-const TARGETTED_ELAPSED: Duration = Duration::from_micros(200);
+const TARGETED_ELAPSED: Duration = Duration::from_micros(200);
 
 fn multiplexer_run<T>(mut multiplexer: Multiplexer<T>) -> Result<()>
 where
@@ -322,7 +346,7 @@ where
     let mut adjustment = Duration::ZERO;
 
     while !multiplexer.stopped() {
-        multiplexer.step(TARGETTED_ELAPSED.saturating_add(adjustment));
+        multiplexer.step(TARGETED_ELAPSED.saturating_add(adjustment));
 
         // compute how much time actually elapsed while performing the
         // multiplexer core operations
@@ -330,12 +354,12 @@ where
 
         // if we have too much time in our hand (i.e. TARGET > elapsed)
         // then we will want to sleep off the remaining time
-        let sleep_duration = TARGETTED_ELAPSED.saturating_sub(elapsed);
+        let sleep_duration = TARGETED_ELAPSED.saturating_sub(elapsed);
 
         // if we have not enough time (i.e. TARGET < elapsed) then
         // we will want to account for that extra time on the following
         // run.
-        adjustment = elapsed.saturating_sub(TARGETTED_ELAPSED);
+        adjustment = elapsed.saturating_sub(TARGETED_ELAPSED);
 
         std::thread::sleep(sleep_duration);
 

@@ -25,7 +25,7 @@ pub use self::{
 ///
 /// The [`Network`] is responsible for maintaining each [`Node`] accountable
 /// of their network activities: Upload and Download congestivity as well as
-/// buffers for sending and receiving data. It is also reponsible for
+/// buffers for sending and receiving data. It is also responsible for
 /// keeping the [`Link`] accountable for the [`Latency`] and the
 /// [`Bandwidth`].
 ///
@@ -61,6 +61,38 @@ pub struct Network<T> {
     id: NodeId,
 }
 
+/// Builder for configuring a new node before registering it with the network.
+///
+/// Obtained via [`Network::new_node`]. Configure per-node bandwidth and buffer
+/// limits with the setter methods, then call [`build`](NodeBuilder::build) to
+/// register the node and obtain its [`NodeId`].
+///
+/// ## Defaults
+///
+/// | Setting | Default |
+/// |---------|---------|
+/// | Upload bandwidth | Unlimited ([`Bandwidth::MAX`]) |
+/// | Upload buffer | 64 MiB |
+/// | Download bandwidth | Unlimited ([`Bandwidth::MAX`]) |
+/// | Download buffer | 64 MiB |
+///
+/// ## Example
+///
+/// ```
+/// use netsim_core::{network::Network, Bandwidth};
+///
+/// let mut network: Network<()> = Network::new();
+///
+/// // Default node — unlimited bandwidth, 64 MiB buffers.
+/// let n1 = network.new_node().build();
+///
+/// // Constrained node — 10 Mbps upload, 100 MB upload buffer.
+/// let n2 = network
+///     .new_node()
+///     .set_upload_bandwidth("10mbps".parse().unwrap())
+///     .set_upload_buffer(100 * 1_024 * 1_024)
+///     .build();
+/// ```
 pub struct NodeBuilder<'a, T> {
     node: Node<T>,
 
@@ -124,8 +156,10 @@ impl<T> LinkBuilder<'_, T> {
 /// can be sent between them.
 #[derive(Debug, Error)]
 pub enum RouteError {
+    /// The sending node ID was not found in the network.
     #[error("Sender ({sender}) Not Found")]
     SenderNotFound { sender: NodeId },
+    /// The receiving node ID was not found in the network.
     #[error("Recipient ({recipient}) Not Found")]
     RecipientNotFound { recipient: NodeId },
     /// No link has been configured between the two nodes.
@@ -138,10 +172,13 @@ pub enum RouteError {
     LinkNotFound { link: LinkId },
 }
 
+/// Error returned when [`Network::send`] fails.
 #[derive(Debug, Error)]
 pub enum SendError {
+    /// The route between the two nodes could not be established.
     #[error("{0}")]
     Route(#[from] RouteError),
+    /// The sending node's upload buffer is full; the packet was dropped.
     #[error("Sender's ({sender}) buffer is full.")]
     SenderBufferFull {
         sender: NodeId,
@@ -161,26 +198,47 @@ where
 }
 
 impl<T> NodeBuilder<'_, T> {
+    /// Set the maximum size of the node's upload buffer in bytes.
+    ///
+    /// Packets queued for sending are held in this buffer until bandwidth
+    /// allows them to be transmitted. If the buffer is full, [`Network::send`]
+    /// returns [`SendError::SenderBufferFull`].
     pub fn set_upload_buffer(mut self, buffer_size: u64) -> Self {
         self.node.set_upload_buffer(buffer_size);
         self
     }
 
+    /// Set the upload bandwidth limit for this node.
+    ///
+    /// Controls how many bytes per second this node can transmit. Defaults
+    /// to [`Bandwidth::MAX`] (unlimited).
     pub fn set_upload_bandwidth(mut self, bandwidth: Bandwidth) -> Self {
         self.node.set_upload_bandwidth(bandwidth);
         self
     }
 
+    /// Set the maximum size of the node's download buffer in bytes.
+    ///
+    /// Incoming bytes are held in this buffer until the application reads
+    /// them. If the buffer is full, arriving bytes are silently dropped and
+    /// the transit is marked corrupted.
     pub fn set_download_buffer(mut self, buffer_size: u64) -> Self {
         self.node.set_download_buffer(buffer_size);
         self
     }
 
+    /// Set the download bandwidth limit for this node.
+    ///
+    /// Controls how many bytes per second this node can receive. Defaults
+    /// to [`Bandwidth::MAX`] (unlimited).
     pub fn set_download_bandwidth(mut self, bandwidth: Bandwidth) -> Self {
         self.node.set_download_bandwidth(bandwidth);
         self
     }
 
+    /// Finalise the node configuration and register it with the network.
+    ///
+    /// Returns the [`NodeId`] assigned to this node.
     pub fn build(self) -> NodeId {
         let Self { node, network } = self;
 
@@ -196,6 +254,22 @@ impl<T> Network<T>
 where
     T: Data,
 {
+    /// Create a new, empty simulated network.
+    ///
+    /// The network has no nodes or links. Add nodes with
+    /// [`new_node`](Network::new_node) and connect them with
+    /// [`configure_link`](Network::configure_link).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use netsim_core::network::Network;
+    ///
+    /// let mut network: Network<()> = Network::new();
+    /// let n1 = network.new_node().build();
+    /// let n2 = network.new_node().build();
+    /// network.configure_link(n1, n2).apply();
+    /// ```
     pub fn new() -> Self {
         Self {
             packet_id_generator: PacketIdGenerator::new(),
@@ -207,6 +281,11 @@ where
         }
     }
 
+    /// Returns the shared [`PacketIdGenerator`] for this network.
+    ///
+    /// Pass this to [`Packet::builder`] when constructing packets manually.
+    /// The generator is shared between the network and all sockets; every call
+    /// to [`PacketIdGenerator::generate`] produces a unique [`PacketId`].
     pub fn packet_id_generator(&self) -> &PacketIdGenerator {
         &self.packet_id_generator
     }
@@ -363,9 +442,11 @@ where
         NetworkStats { nodes, links }
     }
 
-    /// advsance the network state and handle network packets
-    /// ready to be received.
+    /// Advance the network state and deliver packets that have completed transit.
     ///
+    /// `duration` is the simulated time elapsed since the last call. The
+    /// provided `handle` closure is called once for each packet that has
+    /// fully traversed the network during this step.
     pub fn advance_with<H>(&mut self, duration: Duration, mut handle: H)
     where
         H: FnMut(Packet<T>),

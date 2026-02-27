@@ -5,16 +5,43 @@ use std::{
     sync::{Arc, atomic::AtomicU64},
 };
 
-/// a generator for monotonicaly increasing **unique** [`PacketId`]
+/// A monotonically increasing generator for unique [`PacketId`] values.
 ///
+/// Obtain a generator from [`Network::packet_id_generator`] or
+/// `SimSocket::packet_id_generator` (in the `netsim` crate). It is backed by
+/// an atomic counter so the same generator can be cloned and shared across
+/// threads — every call to [`generate`](PacketIdGenerator::generate) will
+/// produce a distinct ID.
+///
+/// IDs start at `1`. The generator will panic in a debug build (and produce
+/// duplicates in a release build) only after `u64::MAX` packets have been
+/// generated, which is not a practical concern.
+///
+/// [`Network::packet_id_generator`]: crate::network::Network::packet_id_generator
 #[derive(Debug, Clone, Default)]
 pub struct PacketIdGenerator(Arc<AtomicU64>);
 
-/// # [`Packet`] Identifier
+/// A unique identifier for a single packet in the simulation.
 ///
-/// During the lifetime of the packet, this identifier can uniquely
-/// identify the packet.
+/// Returned by [`Network::send`] and `SimSocket::send_to` (in the `netsim` crate). Use it to
+/// correlate a sent packet with the one received on the other end:
 ///
+/// ```
+/// # use netsim_core::{network::{Network, Packet}, NodeId};
+/// # let mut network = Network::<()>::new();
+/// # let n1 = network.new_node().build();
+/// # let n2 = network.new_node().build();
+/// # network.configure_link(n1, n2).apply();
+/// # let packet = Packet::builder(network.packet_id_generator()).from(n1).to(n2).data(()).build().unwrap();
+/// // The ID returned by send matches the ID on the received packet.
+/// let sent_id = network.send(packet).unwrap();
+/// // (after advancing time) received_packet.id() == sent_id
+/// ```
+///
+/// `PacketId` implements `Display` as a zero-padded 16-digit hex string
+/// (`0x0000000000000001`), useful for log messages.
+///
+/// [`Network::send`]: crate::network::Network::send
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PacketId(u64);
 
@@ -32,13 +59,62 @@ pub struct PacketId(u64);
 #[derive(Debug, Clone, Copy)]
 struct OnDrop<T>(extern "C" fn(T));
 
-/// # A wrapped message
+/// An envelope that wraps user data for transit through the [`Network`].
 ///
-/// A [`Packet`] is a message with the sender identifier, the
-/// receiver identifier and the message's data itself. It also
-/// embed other metadata and the optional method to handle
-/// the message's data on drop.
+/// A `Packet` carries:
+/// - a unique [`PacketId`] assigned at build time,
+/// - the sender's [`NodeId`] (`from`),
+/// - the recipient's [`NodeId`] (`to`),
+/// - the user payload (`data: T`),
+/// - the byte-size of the payload (queried once at build time via [`Data::bytes_size`]),
+/// - an optional FFI drop handler (see [`PacketBuilder::on_drop`]).
 ///
+/// ## Building a packet
+///
+/// Use [`Packet::builder`] with a [`PacketIdGenerator`]:
+///
+/// ```
+/// use netsim_core::{network::{Network, Packet}, NodeId};
+///
+/// let mut network = Network::<&str>::new();
+/// let n1 = network.new_node().build();
+/// let n2 = network.new_node().build();
+/// network.configure_link(n1, n2).apply();
+///
+/// let packet = Packet::builder(network.packet_id_generator())
+///     .from(n1)
+///     .to(n2)
+///     .data("hello")
+///     .build()
+///     .unwrap();
+///
+/// let packet_id = network.send(packet).unwrap();
+/// ```
+///
+/// ## Accessing received data
+///
+/// After receiving a packet from [`Network::advance_with`] or
+/// `SimSocket::recv_packet` (in the `netsim` crate), extract the payload with
+/// [`into_inner`](Packet::into_inner):
+///
+/// ```
+/// # use netsim_core::{network::{Network, Packet}, NodeId};
+/// # use std::time::Duration;
+/// # let mut network = Network::<&str>::new();
+/// # let n1 = network.new_node().build();
+/// # let n2 = network.new_node().build();
+/// # network.configure_link(n1, n2).apply();
+/// # let packet = Packet::builder(network.packet_id_generator()).from(n1).to(n2).data("hello").build().unwrap();
+/// # network.send(packet).unwrap();
+/// network.advance_with(Duration::from_millis(10), |packet| {
+///     let msg: &str = packet.into_inner();
+///     println!("received: {msg}");
+/// });
+/// ```
+///
+/// [`Data::bytes_size`]: crate::data::Data::bytes_size
+/// [`Network`]: crate::network::Network
+/// [`Network::advance_with`]: crate::network::Network::advance_with
 pub struct Packet<T> {
     id: PacketId,
     from: NodeId,
@@ -48,6 +124,11 @@ pub struct Packet<T> {
     on_drop: Option<OnDrop<T>>,
 }
 
+/// Builder for constructing a [`Packet`].
+///
+/// Obtained via [`Packet::builder`]. All three of [`from`](PacketBuilder::from),
+/// [`to`](PacketBuilder::to), and [`data`](PacketBuilder::data) must be set;
+/// [`build`](PacketBuilder::build) returns an error if any is missing.
 pub struct PacketBuilder<'a, T> {
     generator: &'a PacketIdGenerator,
     from: Option<NodeId>,
@@ -57,11 +138,15 @@ pub struct PacketBuilder<'a, T> {
 }
 
 impl PacketIdGenerator {
+    /// Create a new generator. IDs start at `1`.
     pub fn new() -> Self {
         Self(Arc::new(AtomicU64::new(1)))
     }
 
-    /// generate a new unique identifier
+    /// Generate a new globally unique [`PacketId`].
+    ///
+    /// IDs are assigned sequentially with `SeqCst` ordering so that clones of
+    /// the same generator never produce duplicates, even across threads.
     pub fn generate(&self) -> PacketId {
         let id = self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
@@ -86,6 +171,7 @@ impl<'a, T> PacketBuilder<'a, T>
 where
     T: Data,
 {
+    /// Create a new builder tied to the given ID generator.
     pub fn new(generator: &'a PacketIdGenerator) -> Self {
         Self {
             generator,
@@ -96,26 +182,46 @@ where
         }
     }
 
+    /// Set the sender node. Must be a [`NodeId`] that exists in the network.
     pub fn from(mut self, from: NodeId) -> Self {
         self.from = Some(from);
         self
     }
 
+    /// Set the recipient node. Must be a [`NodeId`] that exists in the network.
     pub fn to(mut self, to: NodeId) -> Self {
         self.to = Some(to);
         self
     }
 
+    /// Set the payload. [`Data::bytes_size`] is called here to capture the
+    /// byte size for bandwidth accounting.
+    ///
+    /// [`Data::bytes_size`]: crate::data::Data::bytes_size
     pub fn data(mut self, data: T) -> Self {
         self.data = Some(data);
         self
     }
 
+    /// Register an FFI-safe drop handler called when the [`Network`] discards
+    /// the packet (e.g. due to buffer overflow or packet loss).
+    ///
+    /// This is intended for FFI scenarios where the payload is allocated on
+    /// the C side and needs to be explicitly freed when dropped by the
+    /// simulator. For pure-Rust usage the normal [`Drop`] implementation of
+    /// `T` is sufficient and this method is not needed.
+    ///
+    /// [`Network`]: crate::network::Network
     pub fn on_drop(mut self, on_drop: extern "C" fn(T)) -> Self {
         self.on_drop = Some(OnDrop(on_drop));
         self
     }
 
+    /// Finalise the packet.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any of `from`, `to`, or `data` were not set.
     pub fn build(self) -> Result<Packet<T>> {
         let id = self.generator.generate();
 
@@ -153,14 +259,23 @@ where
 }
 
 impl<T> Packet<T> {
+    /// Returns the [`NodeId`] of the node that sent this packet.
     pub fn from(&self) -> NodeId {
         self.from
     }
 
+    /// Returns the [`NodeId`] of the intended recipient.
     pub fn to(&self) -> NodeId {
         self.to
     }
 
+    /// Returns the unique [`PacketId`] assigned when the packet was built.
+    ///
+    /// This is the same ID returned by [`Network::send`] and
+    /// `SimSocket::send_to` (in the `netsim` crate), so you can correlate
+    /// sends with receives.
+    ///
+    /// [`Network::send`]: crate::network::Network::send
     pub fn id(&self) -> PacketId {
         self.id
     }
@@ -169,8 +284,11 @@ impl<T> Packet<T> {
         self.data.take()
     }
 
-    /// consume the packet and get the inner `T`.
+    /// Consume the packet and return the inner payload.
     ///
+    /// Calling this prevents the `on_drop` callback (if any) from being
+    /// invoked, because ownership of the data has been transferred to the
+    /// caller.
     pub fn into_inner(mut self) -> T {
         self.take_inner()
             .expect("We should always have the data available")

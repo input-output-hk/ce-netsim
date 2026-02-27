@@ -1,5 +1,5 @@
-pub mod geodesic;
-pub mod geomath;
+pub(crate) mod geodesic;
+pub(crate) mod geomath;
 
 use self::geodesic::Geodesic;
 

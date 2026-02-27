@@ -12,19 +12,20 @@ use super::geodesic::{CARR_SIZE, GEODESIC_ORDER};
 
 pub const DIGITS: u64 = 53;
 
-// Square
+/// Returns `x²`.
 pub fn sq(x: f64) -> f64 {
     x.powi(2)
 }
 
-// Normalize a two-vector
+/// Normalise a two-vector `(x, y)` in-place so that `hypot(x, y) == 1`.
 pub fn norm(x: &mut f64, y: &mut f64) {
     let r = x.hypot(*y);
     *x /= r;
     *y /= r;
 }
 
-// Error free transformation of a sum
+/// Error-free transformation of a sum: returns `(s, t)` where `s = u + v`
+/// and `t` is the rounding error such that `s + t == u + v` exactly.
 pub fn sum(u: f64, v: f64) -> (f64, f64) {
     let s = u + v;
     let up = s - v;
@@ -35,7 +36,8 @@ pub fn sum(u: f64, v: f64) -> (f64, f64) {
     (s, t)
 }
 
-// Evaluate a polynomial
+/// Evaluate the degree-`n` polynomial whose coefficients are `p[0..=n]`
+/// at `x` using Horner's method. `p` must have at least `n + 1` elements.
 pub fn polyval(n: usize, p: &[f64], x: f64) -> f64 {
     debug_assert!(
         p.len() > n,
@@ -50,7 +52,8 @@ pub fn polyval(n: usize, p: &[f64], x: f64) -> f64 {
     y
 }
 
-// Round an angle so that small values underflow to 0
+/// Round an angle (in degrees) so that small values underflow to exactly 0,
+/// avoiding near-singular cases in the geodesic solver.
 pub fn ang_round(x: f64) -> f64 {
     // The makes the smallest gap in x = 1/16 - nextafter(1/16, 0) = 1/2^57
     // for reals = 0.7 pm on the earth if x is an angle in degrees.  (This
@@ -94,7 +97,7 @@ fn remainder(x: f64, y: f64) -> f64 {
     }
 }
 
-// reduce angle to (-180,180]
+/// Reduce an angle in degrees to the range `(-180, 180]`.
 pub fn ang_normalize(x: f64) -> f64 {
     // y = Math.remainder(x, 360)
     // return 180 if y == -180 else y
@@ -102,12 +105,14 @@ pub fn ang_normalize(x: f64) -> f64 {
     if y == -180.0 { 180.0 } else { y }
 }
 
-// Replace angles outside [-90,90] with NaN
+/// Replace latitudes outside `[-90, 90]` degrees with `NaN`.
 pub fn lat_fix(x: f64) -> f64 {
     if x.abs() > 90.0 { f64::NAN } else { x }
 }
 
-// compute y - x and reduce to [-180,180] accurately
+/// Compute `y − x` in degrees, reduced accurately to `(-180, 180]`.
+///
+/// Returns an error-free `(difference, rounding_error)` pair via [`sum`].
 pub fn ang_diff(x: f64, y: f64) -> (f64, f64) {
     let (d, t) = sum(ang_normalize(-x), ang_normalize(y));
     let d = ang_normalize(d);
@@ -118,7 +123,8 @@ pub fn ang_diff(x: f64, y: f64) -> (f64, f64) {
     }
 }
 
-// Compute sine and cosine of x in degrees
+/// Compute `(sin x, cos x)` for `x` given in degrees, with exact values at
+/// multiples of 90°.
 pub fn sincosd(x: f64) -> (f64, f64) {
     // Keep this dependency-free: reduce by quarter turns manually.
     // For our use here, standard floating reduction is sufficient.
@@ -155,8 +161,10 @@ pub fn sincosd(x: f64) -> (f64, f64) {
     (sinx, cosx)
 }
 
-// Compute atan2(y, x) with result in degrees
-pub fn atan2d(mut y: f64, mut x: f64) -> f64 {
+/// Compute `atan2(y, x)` with the result in degrees, handling quadrant
+/// reduction carefully to preserve sign at ±0 and ±180.
+#[allow(dead_code)]
+pub(crate) fn atan2d(mut y: f64, mut x: f64) -> f64 {
     let mut q = if y.abs() > x.abs() {
         std::mem::swap(&mut x, &mut y);
         2
@@ -184,6 +192,9 @@ pub fn atan2d(mut y: f64, mut x: f64) -> f64 {
     ang
 }
 
+/// Compute `e·atanh(e·x)` for an ellipsoid with (signed) eccentricity `es`.
+///
+/// For a prolate spheroid (`es < 0`) uses `atan` instead of `atanh`.
 pub fn eatanhe(x: f64, es: f64) -> f64 {
     if es > 0.0 {
         es * (es * x).atanh()
@@ -192,7 +203,10 @@ pub fn eatanhe(x: f64, es: f64) -> f64 {
     }
 }
 
-// Functions that used to be inside Geodesic
+/// Evaluate a trigonometric series using Clenshaw summation.
+///
+/// If `sinp` is `true` the series is multiplied by `sin x`; otherwise by
+/// `cos x`. `c` contains the Fourier coefficients.
 pub fn sin_cos_series<const N: usize>(sinp: bool, sinx: f64, cosx: f64, c: &[f64; N]) -> f64 {
     let mut k = c.len();
     let mut n: i64 = k as i64 - if sinp { 1 } else { 0 };
@@ -219,7 +233,9 @@ pub fn sin_cos_series<const N: usize>(sinp: bool, sinx: f64, cosx: f64, c: &[f64
     }
 }
 
-// Solve astroid equation
+/// Solve the astroid equation used in the geodesic near-antipodal case.
+///
+/// Returns the positive root of `x²·k⁴ + 2·x·k³ − (y² − 1)·k² − 2·y²·k − y² = 0`.
 pub fn astroid(x: f64, y: f64) -> f64 {
     let p = sq(x);
     let q = sq(y);
@@ -248,6 +264,7 @@ pub fn astroid(x: f64, y: f64) -> f64 {
     }
 }
 
+/// Compute `A₁(ε) − 1`, the scale factor for the first-order series. Ported from GeographicLib.
 pub fn _A1m1f(eps: f64) -> f64 {
     const COEFF: [f64; 5] = [1.0, 4.0, 64.0, 0.0, 256.0];
     let m = GEODESIC_ORDER / 2;
@@ -255,6 +272,7 @@ pub fn _A1m1f(eps: f64) -> f64 {
     (t + eps) / (1.0 - eps)
 }
 
+/// Compute the `C₁` series coefficients into `c`. Ported from GeographicLib.
 pub fn _C1f(eps: f64, c: &mut [f64; CARR_SIZE]) {
     const COEFF: [f64; 18] = [
         -1.0, 6.0, -16.0, 32.0, -9.0, 64.0, -128.0, 2048.0, 9.0, -16.0, 768.0, 3.0, -5.0, 512.0,
@@ -274,6 +292,7 @@ pub fn _C1f(eps: f64, c: &mut [f64; CARR_SIZE]) {
     }
 }
 
+/// Compute the `C₁'` (inverse) series coefficients into `c`. Ported from GeographicLib.
 pub fn _C1pf(eps: f64, c: &mut [f64; CARR_SIZE]) {
     const COEFF: [f64; 18] = [
         205.0, -432.0, 768.0, 1536.0, 4005.0, -4736.0, 3840.0, 12288.0, -225.0, 116.0, 384.0,
@@ -293,6 +312,7 @@ pub fn _C1pf(eps: f64, c: &mut [f64; CARR_SIZE]) {
     }
 }
 
+/// Compute `A₂(ε) − 1`, the scale factor for the second-order series. Ported from GeographicLib.
 pub fn _A2m1f(eps: f64) -> f64 {
     const COEFF: [f64; 5] = [-11.0, -28.0, -192.0, 0.0, 256.0];
     let m = GEODESIC_ORDER / 2;
@@ -300,6 +320,7 @@ pub fn _A2m1f(eps: f64) -> f64 {
     (t - eps) / (1.0 + eps)
 }
 
+/// Compute the `C₂` series coefficients into `c`. Ported from GeographicLib.
 pub fn _C2f(eps: f64, c: &mut [f64; CARR_SIZE]) {
     const COEFF: [f64; 18] = [
         1.0, 2.0, 16.0, 32.0, 35.0, 64.0, 384.0, 2048.0, 15.0, 80.0, 768.0, 7.0, 35.0, 512.0, 63.0,

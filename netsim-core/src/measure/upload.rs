@@ -2,7 +2,7 @@ use super::{Bandwidth, CongestionChannel, Gauge};
 use crate::network::Round;
 use std::{sync::Arc, time::Duration};
 
-/// The upload tracker for the [`super::Route`] of a message.
+/// The upload tracker for the [`Route`](crate::network::Route) of a message.
 ///
 /// The upload will keep track of the buffer (i.e. it will start
 /// releasing the space in the buffer as we process messages through

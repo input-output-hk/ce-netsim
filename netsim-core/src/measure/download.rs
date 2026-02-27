@@ -2,7 +2,7 @@ use super::{Bandwidth, CongestionChannel, Gauge};
 use crate::network::Round;
 use std::{sync::Arc, time::Duration};
 
-/// The download tracker for the [super::Route] of a message.
+/// The download tracker for the [`Route`](crate::network::Route) of a message.
 ///
 /// This will keep track of how much can be downloaded into the
 /// recipient's Buffer and will make sure the buffer's limit are

@@ -1,21 +1,74 @@
 /*!
-# `netsim` core library
+# `netsim-core` — Low-level Network Simulation Primitives
 
-This crate provides the core tools for implementing network protocol simulations.
+`netsim-core` is the building block for network protocol simulations. It
+provides the data structures and algorithms for modelling nodes, links, and
+in-flight packets, but deliberately does **not** manage wall-clock time or
+threads. You control when time advances, which makes it easy to run
+simulations faster than real time, pause them for inspection, or replay them
+deterministically.
 
-It currently implements a [*UDP*] style of message passing:
+For a batteries-included, thread-driven experience with real-time pacing,
+use the `netsim` crate instead.
 
-* messages are sent without expecting an _acknowledgement_.
-* messages are stored in the receiver's buffer. Not reading messages will
-  mean new messages will be dropped and lost.
+## UDP semantics
 
-When dealing directly with the core library it is important to note that
-the passage of time is directly handled by the user of the library.
-This allows to run simulations at different speed to observe certain
-conditions.
+This crate models **UDP-style** message passing:
 
-Though for a more _realistic_ experience it is preferable to utilise
-[`netsim`] or [`netsim-async`] crates.
+- Packets are sent **without acknowledgement**. There are no retries.
+- Dropped packets (due to buffer overflow or packet loss) are **silent**. The
+  network returns `Ok(())` for a send even when a packet is later dropped.
+- If the receiver's buffer fills up, arriving bytes are silently discarded.
+
+## Mental model
+
+```text
+Network::send()
+      │
+      ▼ upload buffer (bytes wait here until bandwidth allows)
+ [ Sender Node ]
+      │
+      │ outbound channel (upload bandwidth limit)
+      ▼
+  [ Link ] ─── latency ──► delivers after N ms of simulated time
+      │          └─ bandwidth (shared by both directions)
+      │          └─ packet_loss (probabilistic drop rate)
+      ▼
+ [ Recipient Node ]
+      │ inbound channel (download bandwidth limit)
+      ▼ download buffer (bytes wait here until advance_with delivers them)
+Network::advance_with() closure receives the packet
+```
+
+A **link** is bidirectional and the bandwidth budget is **shared** between
+both directions. If node A is saturating the link to node B, packets going
+from B to A will experience the same congestion.
+
+## Your message type and the `Data` trait
+
+Any type `T` you want to send through the network must implement the
+[`Data`](crate::data::Data) trait, which has a single method:
+
+```
+# use netsim_core::data::Data;
+struct MyMessage {
+    payload: Vec<u8>,
+}
+
+impl Data for MyMessage {
+    fn bytes_size(&self) -> u64 {
+        self.payload.len() as u64
+    }
+}
+```
+
+The byte size is used to account for bandwidth and buffer capacity. If your
+message has no meaningful byte size (e.g. in unit tests), return `0` — the
+packet will still transit the network and respect latency, it just won't
+consume any bandwidth.
+
+The `Data` trait is already implemented for common types: `()`, `u8`,
+`String`, `Vec<u8>`, `Box<[u8]>`, `[u8; N]`, and `&'static str`.
 
 # Building a [`Network`]
 

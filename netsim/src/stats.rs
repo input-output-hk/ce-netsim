@@ -1,10 +1,10 @@
-//! Network observability types for [`SimContext`].
+//! Network observability types for [`SimContext`](crate::SimContext).
 //!
 //! Obtain a snapshot via [`SimContext::stats`](crate::SimContext::stats).
 
 pub use netsim_core::stats::LinkStats;
 
-/// Statistics for a single node in a [`SimContext`].
+/// Statistics for a single node in a [`SimContext`](crate::SimContext).
 #[derive(Debug, Clone)]
 pub struct NodeStats {
     /// Core node statistics (buffer usage, bandwidth).

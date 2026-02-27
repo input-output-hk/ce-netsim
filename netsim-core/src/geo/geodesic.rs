@@ -22,6 +22,16 @@ const REDUCEDLENGTH: u64 = (1 << 12) | CAP_C1 | CAP_C2;
 const GEODESICSCALE: u64 = (1 << 13) | CAP_C1 | CAP_C2;
 const AREA: u64 = (1 << 14) | CAP_C4;
 
+/// Karney/GeographicLib geodesic calculator for a given spheroid.
+///
+/// Holds the precomputed polynomial series coefficients (`A3x`, `C3x`, `C4x`)
+/// derived from the spheroid's flattening parameter. For a fixed spheroid
+/// (e.g. WGS-84 Earth) these coefficients are constant; use
+/// `geo::earth_geodesic()` to obtain a cached instance rather than calling
+/// `Geodesic::new` on every distance calculation.
+///
+/// Field names mirror the GeographicLib C++ source (with a leading `_`) and
+/// are intentionally not documented individually here.
 #[derive(Copy, Clone, PartialEq, PartialOrd, Debug)]
 pub struct Geodesic {
     pub a: f64,
@@ -80,6 +90,12 @@ const _nC3x_: usize = 15;
 const _nC4x_: usize = 21;
 
 impl Geodesic {
+    /// Construct a geodesic calculator for a spheroid with semi-major axis `a`
+    /// (metres) and flattening `f` (= 1 − b/a, where b is the semi-minor axis).
+    ///
+    /// Precomputes the `A3x`, `C3x`, and `C4x` polynomial coefficient arrays.
+    /// For WGS-84 Earth, prefer `geo::earth_geodesic()` to avoid repeating
+    /// this work on every call.
     pub fn new(a: f64, f: f64) -> Self {
         let maxit1_ = 20;
         let maxit2_ = maxit1_ + geomath::DIGITS + 10;
@@ -853,6 +869,11 @@ impl Geodesic {
         (a12, s12, salp1, calp1, salp2, calp2, m12, M12, M21, S12)
     }
 
+    /// Compute the geodesic distance in metres between two points given as
+    /// decimal-degree (latitude, longitude) pairs.
+    ///
+    /// Returns a non-finite value if the computation fails (e.g. NaN inputs).
+    /// Callers should check `result.is_finite() && result >= 0.0`.
     pub fn inverse_distance(&self, lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
         let (_a12, s12, _salp1, _calp1, _salp2, _calp2, _m12, _M12, _M21, _S12) =
             self._gen_inverse(lat1, lon1, lat2, lon2, DISTANCE);
