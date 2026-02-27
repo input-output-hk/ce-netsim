@@ -184,8 +184,6 @@ impl<T> NodeBuilder<'_, T> {
 
         let id = node.id();
 
-        debug_assert_ne!(id, NodeId::ZERO, "The NodeId `0` shouldn't be given.");
-
         network.nodes.insert(id, node);
 
         id
@@ -211,6 +209,10 @@ where
         &self.packet_id_generator
     }
 
+    /// Create a new node and return a builder to configure it.
+    ///
+    /// Node IDs are assigned sequentially starting at `1`. [`NodeId::ZERO`] is
+    /// reserved as a sentinel and is never returned by this method.
     pub fn new_node(&mut self) -> NodeBuilder<'_, T> {
         self.id = self.id.next();
         NodeBuilder {
