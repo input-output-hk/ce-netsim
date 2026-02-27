@@ -224,6 +224,18 @@ impl Location {
     }
 }
 
+impl TryFrom<(f64, f64)> for Location {
+    type Error = GeoError;
+
+    /// Converts `(latitude_degrees, longitude_degrees)` into a [`Location`].
+    ///
+    /// Delegates to [`Location::from_degrees`]; returns a [`GeoError`] if
+    /// either value is out of range or non-finite.
+    fn try_from((lat, lon): (f64, f64)) -> Result<Self, Self::Error> {
+        Self::from_degrees(lat, lon)
+    }
+}
+
 impl fmt::Display for Location {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}, {}", self.latitude, self.longitude)
@@ -950,5 +962,44 @@ mod tests {
         let location = Location::try_from_e4(-49_3523, 70_2150).unwrap();
 
         assert_eq!(location.to_string().parse::<Location>().unwrap(), location);
+    }
+
+    #[test]
+    fn location_try_from_f64_tuple_valid() {
+        let expected = Location::from_degrees(48.8566, 2.3522).unwrap();
+        let actual = Location::try_from((48.8566_f64, 2.3522_f64)).unwrap();
+        assert_eq!(actual, expected);
+
+        // try_into() spelling
+        let via_into: Location = (48.8566_f64, 2.3522_f64).try_into().unwrap();
+        assert_eq!(via_into, expected);
+    }
+
+    #[test]
+    fn location_try_from_f64_tuple_invalid_latitude() {
+        assert!(matches!(
+            Location::try_from((91.0_f64, 0.0_f64)),
+            Err(GeoError::InvalidLatitude { .. })
+        ));
+    }
+
+    #[test]
+    fn location_try_from_f64_tuple_invalid_longitude() {
+        assert!(matches!(
+            Location::try_from((0.0_f64, 181.0_f64)),
+            Err(GeoError::InvalidLongitude { .. })
+        ));
+    }
+
+    #[test]
+    fn location_try_from_f64_tuple_non_finite() {
+        assert!(matches!(
+            Location::try_from((f64::NAN, 0.0_f64)),
+            Err(GeoError::NonFiniteComputation)
+        ));
+        assert!(matches!(
+            Location::try_from((0.0_f64, f64::INFINITY)),
+            Err(GeoError::NonFiniteComputation)
+        ));
     }
 }
