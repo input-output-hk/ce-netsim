@@ -10,93 +10,103 @@ use std::{
 /// The [`Bandwidth`] that can be used to determine how much
 /// data can be processed during a certain [`Duration`].
 ///
-/// Internally stores bytes per microsecond as an [`AtomicU64`], enabling
-/// lock-free reads and writes. The conversion from the `(data, per)` pair
-/// happens at construction time and is lossy for bandwidths below 1 byte/µs
-/// (i.e. slower than 1 Mbps); such rates are rounded down to 0 bytes/µs.
+/// Internally stores **bits per second** (bps) as an [`AtomicU64`], enabling
+/// lock-free reads and writes. Supports any rate from 1 bps up to ~18.4 Ebps
+/// (effectively unlimited for any realistic simulation).
 ///
-/// # Default
+/// ## Constructing
 ///
-/// if using the [`Default`] bandwidth the bandwidth is then at
-/// the maximum (or more precisely [`Bandwidth::MAX`]).
-///
-/// # Example
+/// Pass bits per second directly:
 ///
 /// ```
 /// # use netsim_core::measure::Bandwidth;
 /// # use std::time::Duration;
-/// // create a bandwidth of `2mbps`
-/// let bw = Bandwidth::new(
-///     2_000_000,
-///     Duration::from_secs(1),
-/// );
-/// // get the capacity allowed by the bandwidth
-/// // i.e. the number of bytes that can be transmitted
-/// // during the given duration
+/// let bw = Bandwidth::new(8_000_000); // 8 Mbps
 /// let capacity = bw.capacity(Duration::from_micros(1));
-/// # assert_eq!(capacity, 2);
+/// # assert_eq!(capacity, 1);
 /// ```
+///
+/// Or parse from a human-readable string using standard networking units
+/// (bits, SI prefixes):
+///
+/// ```
+/// # use netsim_core::measure::Bandwidth;
+/// let bw: Bandwidth = "100mbps".parse().unwrap(); // 100 Mbit/s
+/// ```
+///
+/// ## Minimum usable bandwidth and step size
+///
+/// [`Bandwidth::capacity`] uses integer arithmetic and always returns whole
+/// bytes. If the configured bandwidth is very low relative to the `elapsed`
+/// duration, the result may floor to **0 bytes** — meaning no data passes in
+/// that round and the network appears stalled.
+///
+/// The minimum bandwidth that yields ≥ 1 byte per step depends on step size:
+///
+/// | Step size | Min bandwidth for ≥ 1 byte/step |
+/// |-----------|----------------------------------|
+/// | 200 µs (netsim default) | ~40 Kbps |
+/// | 1 ms                    | ~8 Kbps  |
+/// | 10 ms                   | ~800 bps |
+///
+/// This is a fundamental property of integer byte counting with discrete time
+/// steps. Use a longer step duration with `Network::advance_with` for very
+/// slow links.
+///
+/// # Default
+///
+/// The default bandwidth is [`Bandwidth::MAX`] (effectively unlimited).
 ///
 pub struct Bandwidth(AtomicU64);
 
 impl Bandwidth {
-    /// the maximum bandwidth available
-    ///
-    /// Stores [`u64::MAX`] bytes per microsecond, which is effectively
-    /// unlimited for any realistic simulation.
-    ///
+    /// The maximum bandwidth: [`u64::MAX`] bits per second, effectively unlimited
+    /// for any realistic simulation.
     #[allow(clippy::declare_interior_mutable_const)]
-    pub const MAX: Self = Self::new(u64::MAX, Duration::from_secs(1));
+    pub const MAX: Self = Self(AtomicU64::new(u64::MAX));
 
-    /// create a new [`Bandwidth`]
-    ///
-    /// * `data`: the number of bytes that can be processed for the given duration
-    /// * `per`: the duration during which the data can be processed
-    ///
-    /// The `(data, per)` pair is converted to bytes per microsecond at
-    /// construction time. Bandwidths below 1 byte/µs (< ~1 Mbps) are stored
-    /// as 0 bytes/µs.
+    /// Creates a new [`Bandwidth`] with the given bits-per-second rate.
     ///
     /// ```
     /// # use netsim_core::measure::Bandwidth;
-    /// # use std::time::Duration;
-    /// // create a bandwidth of `200mbps`
-    /// let bw = Bandwidth::new(
-    ///     200 * 1_024 * 1_024, // (200 MB)
-    ///     Duration::from_secs(1),
-    /// );
+    /// let bw = Bandwidth::new(100_000_000); // 100 Mbps
     /// ```
-    pub const fn new(data: u64, per: Duration) -> Self {
-        let per_us = per.as_micros() as u64;
-        let bpu = if per_us == 0 { u64::MAX } else { data / per_us };
-        Self(AtomicU64::new(bpu))
+    pub const fn new(bits_per_sec: u64) -> Self {
+        Self(AtomicU64::new(bits_per_sec))
     }
 
     /// Returns how many bytes can be transferred during `elapsed`.
     ///
+    /// Uses integer arithmetic; may return 0 when `elapsed` is very short
+    /// relative to the configured bandwidth — see the [struct-level
+    /// documentation][Bandwidth] for the minimum usable bandwidth per step
+    /// size.
+    ///
     /// ```
     /// # use netsim_core::measure::Bandwidth;
     /// # use std::time::Duration;
-    /// // 2 bytes/µs → 2_000_000 bytes in 1 second
-    /// let bw = Bandwidth::new(2_000_000, Duration::from_secs(1));
+    /// // 16 Mbps: 2_000_000 bytes per second
+    /// let bw = Bandwidth::new(16_000_000);
     /// let capacity = bw.capacity(Duration::from_secs(1));
     /// # assert_eq!(capacity, 2_000_000);
     /// ```
     pub fn capacity(&self, elapsed: Duration) -> u64 {
-        let bpu = self.0.load(Ordering::Relaxed) as u128;
+        let bps = self.0.load(Ordering::Relaxed) as u128;
         let us = elapsed.as_micros();
-        bpu.saturating_mul(us).min(u64::MAX as u128) as u64
+        // bytes = bits_per_s × µs / (8 bits/byte × 1_000_000 µs/s)
+        let bits = bps.saturating_mul(us);
+        (bits / 8_000_000).min(u64::MAX as u128) as u64
     }
 
-    /// Returns the raw bytes-per-microsecond value.
-    pub fn bytes_per_us(&self) -> u64 {
+    /// Returns the raw bits-per-second value.
+    pub fn bits_per_sec(&self) -> u64 {
         self.0.load(Ordering::Relaxed)
     }
 
-    /// Overwrites the bandwidth with a new `(data, per)` pair.
+    /// Overwrites this bandwidth with a new value.
     pub fn set(&self, this: Bandwidth) {
-        let bpu = this.0.load(Ordering::Relaxed);
-        self.0.store(bpu, Ordering::Relaxed);
+        self.0
+            .store(this.0.load(Ordering::Relaxed), Ordering::Relaxed);
     }
 }
 
@@ -145,37 +155,36 @@ impl fmt::Debug for Bandwidth {
 }
 
 // --- Display ---
+//
+// Uses SI (1000-based) prefixes, matching standard networking convention.
+// Shows the largest unit that divides the value evenly.
 
-const K: u64 = 1_024;
-const M: u64 = 1_024 * 1_024;
-const G: u64 = 1_024 * 1_024 * 1_024;
+const K: u64 = 1_000;
+const M: u64 = 1_000_000;
+const G: u64 = 1_000_000_000;
 
 impl fmt::Display for Bandwidth {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let capacity = self.capacity(Duration::from_secs(1));
-
-        let v = capacity;
-        let k = capacity / K;
-        let m = capacity / M;
-        let g = capacity / G;
-
-        let v_r = capacity % K;
-        let k_r = capacity % M;
-        let m_r = capacity % G;
-
-        if v < K || v_r != 0 {
-            write!(f, "{v}bps")
-        } else if v < M || k_r != 0 {
-            write!(f, "{k}kbps")
-        } else if v < G || m_r != 0 {
-            write!(f, "{m}mbps")
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let bps = self.bits_per_sec();
+        if bps < K || !bps.is_multiple_of(K) {
+            write!(f, "{bps}bps")
+        } else if bps < M || !bps.is_multiple_of(M) {
+            write!(f, "{}kbps", bps / K)
+        } else if bps < G || !bps.is_multiple_of(G) {
+            write!(f, "{}mbps", bps / M)
         } else {
-            write!(f, "{g}gbps")
+            write!(f, "{}gbps", bps / G)
         }
     }
 }
 
 // --- FromStr ---
+//
+// Parses standard networking units (bits, SI prefixes):
+//   "1bps"  = 1 bit/s
+//   "1kbps" = 1_000 bits/s
+//   "1mbps" = 1_000_000 bits/s
+//   "1gbps" = 1_000_000_000 bits/s
 
 #[derive(Logos, Debug, PartialEq)]
 #[logos(skip r"[ \t\n\f]+")] // Ignore this regex pattern between tokens
@@ -205,11 +214,11 @@ impl FromStr for Bandwidth {
         let Some(Ok(token)) = lex.next() else {
             bail!("Expecting to parse a unit")
         };
-        let bps = match token {
+        let bps: u64 = match token {
             BandwidthToken::Bps => number,
-            BandwidthToken::Kbps => number * 1_024,
-            BandwidthToken::Mbps => number * 1_024 * 1_024,
-            BandwidthToken::Gbps => number * 1_024 * 1_024 * 1_024,
+            BandwidthToken::Kbps => number.saturating_mul(K),
+            BandwidthToken::Mbps => number.saturating_mul(M),
+            BandwidthToken::Gbps => number.saturating_mul(G),
             BandwidthToken::Value => bail!("Expecting to parse a unit (bps, kbps, ...)"),
         };
 
@@ -218,7 +227,7 @@ impl FromStr for Bandwidth {
             "Not expecting any other tokens to parse a bandwidth"
         );
 
-        Ok(Self::new(bps, Duration::from_secs(1)))
+        Ok(Self::new(bps))
     }
 }
 
@@ -232,52 +241,73 @@ impl Default for Bandwidth {
 mod tests {
     use super::*;
 
+    #[allow(clippy::declare_interior_mutable_const)]
+    const ZERO: Bandwidth = Bandwidth(AtomicU64::new(0));
+
+    /// After redesign to bits/s storage: the minimum representable non-zero
+    /// bandwidth is 1 bit/s, parseable as "1bps".
+    #[test]
+    fn test_minimum_bandwidth() {
+        let min = Bandwidth(AtomicU64::new(1));
+        assert_eq!(min, "1bps".parse().unwrap());
+    }
+
+    /// All sub-megabit values are now representable and non-zero.
+    #[test]
+    fn test_bandwidth_isnt_floored_to_zero() {
+        assert_ne!(ZERO, "1bps".parse().unwrap());
+        assert_ne!(ZERO, "10bps".parse().unwrap());
+        assert_ne!(ZERO, "100bps".parse().unwrap());
+        assert_ne!(ZERO, "1kbps".parse().unwrap());
+        assert_ne!(ZERO, "10kbps".parse().unwrap());
+        assert_ne!(ZERO, "100kbps".parse().unwrap());
+        assert_ne!(ZERO, "999kbps".parse().unwrap());
+    }
+
     #[test]
     fn parse_bandwidth() {
-        macro_rules! assert_bandwidth {
-            ($string:literal == $value:expr) => {
-                assert_eq!(
-                    $string.parse::<Bandwidth>().unwrap(),
-                    Bandwidth::new($value, Duration::from_secs(1))
-                );
-            };
-        }
-
-        assert_bandwidth!("0bps" == 0);
-        assert_bandwidth!("42bps" == 42);
-        assert_bandwidth!("42kbps" == 42 * 1_024);
-        assert_bandwidth!("42mbps" == 42 * 1_024 * 1_024);
+        assert_eq!("0bps".parse::<Bandwidth>().unwrap().bits_per_sec(), 0);
+        assert_eq!("42bps".parse::<Bandwidth>().unwrap().bits_per_sec(), 42);
+        assert_eq!(
+            "42kbps".parse::<Bandwidth>().unwrap().bits_per_sec(),
+            42_000
+        );
+        assert_eq!(
+            "42mbps".parse::<Bandwidth>().unwrap().bits_per_sec(),
+            42_000_000
+        );
+        assert_eq!(
+            "42gbps".parse::<Bandwidth>().unwrap().bits_per_sec(),
+            42_000_000_000
+        );
     }
 
     #[test]
-    #[allow(clippy::identity_op)] // `1 * M` and `1 * G` are intentional: they read as "1 MiB" and "1 GiB"
     fn print_bandwidth() {
-        // Values must be exact multiples of 1_000_000 (bytes/µs granularity).
-        // Bandwidth::new(v, 1s) stores v / 1_000_000 bytes/µs; Display shows
-        // that back as (v / 1_000_000) * 1_000_000 bytes/s.
-        macro_rules! assert_bandwidth {
-            (($bpu:expr) == $string:literal) => {
-                // bpu = bytes per microsecond; construct via 1µs duration
-                assert_eq!(
-                    Bandwidth::new($bpu, Duration::from_micros(1)).to_string(),
-                    $string
-                );
-            };
-        }
-
-        assert_bandwidth!((0) == "0bps");
-        // 1 byte/µs = 1_000_000 bytes/s; 1_000_000 / K = 976 kbps (non-zero remainder), so bps
-        assert_bandwidth!((1) == "1000000bps");
-        // M bytes/µs = M * 1_000_000 bytes/s; divided by M = 1_000_000 mbps
-        assert_bandwidth!((1 * M) == "1000000mbps");
-        // G bytes/µs = G * 1_000_000 bytes/s; divided by G = 1_000_000 gbps
-        assert_bandwidth!((1 * G) == "1000000gbps");
+        // Exact SI multiples round-trip cleanly.
+        assert_eq!(Bandwidth(AtomicU64::new(0)).to_string(), "0bps");
+        assert_eq!(Bandwidth(AtomicU64::new(1)).to_string(), "1bps");
+        assert_eq!(Bandwidth(AtomicU64::new(999)).to_string(), "999bps");
+        assert_eq!(Bandwidth(AtomicU64::new(1_000)).to_string(), "1kbps");
+        // Not an exact kbps multiple → stays in bps
+        assert_eq!(Bandwidth(AtomicU64::new(1_500)).to_string(), "1500bps");
+        assert_eq!(Bandwidth(AtomicU64::new(42_000)).to_string(), "42kbps");
+        assert_eq!(Bandwidth(AtomicU64::new(1_000_000)).to_string(), "1mbps");
+        assert_eq!(Bandwidth(AtomicU64::new(42_000_000)).to_string(), "42mbps");
+        assert_eq!(
+            Bandwidth(AtomicU64::new(1_000_000_000)).to_string(),
+            "1gbps"
+        );
+        assert_eq!(
+            Bandwidth(AtomicU64::new(42_000_000_000)).to_string(),
+            "42gbps"
+        );
     }
 
     #[test]
-    fn bandwidth_capacity_1_byte_per_us() {
-        // 1 byte/µs = 1_000_000 bytes/s
-        let bandwidth = Bandwidth::new(1, Duration::from_micros(1));
+    fn bandwidth_capacity_8mbps() {
+        // 8 Mbps = 1 byte/µs
+        let bandwidth = Bandwidth::new(8_000_000);
 
         assert_eq!(bandwidth.capacity(Duration::from_micros(1)), 1);
         assert_eq!(bandwidth.capacity(Duration::from_millis(1)), 1_000);
@@ -286,9 +316,9 @@ mod tests {
     }
 
     #[test]
-    fn bandwidth_capacity_10_bytes_per_us() {
-        // 10 bytes/µs = 10_000_000 bytes/s
-        let bandwidth = Bandwidth::new(10, Duration::from_micros(1));
+    fn bandwidth_capacity_80mbps() {
+        // 80 Mbps = 10 bytes/µs
+        let bandwidth = Bandwidth::new(80_000_000);
 
         assert_eq!(bandwidth.capacity(Duration::from_micros(1)), 10);
         assert_eq!(bandwidth.capacity(Duration::from_millis(1)), 10_000);
@@ -296,36 +326,29 @@ mod tests {
     }
 
     #[test]
-    fn bandwidth_capacity_non_standard_duration() {
-        // 2_100 bytes every 2_100 µs = 1 byte/µs
-        let bandwidth = Bandwidth::new(2_100, Duration::from_micros(2_100));
+    fn bandwidth_capacity_sub_megabit() {
+        // 100 Kbps link on a 1 ms step: 100_000 * 1000 / 8_000_000 = 12 bytes
+        let bw = Bandwidth::new(100_000);
+        assert_eq!(bw.capacity(Duration::from_millis(1)), 12);
 
-        assert_eq!(bandwidth.capacity(Duration::from_micros(1)), 1);
-        assert_eq!(bandwidth.capacity(Duration::from_millis(1)), 1_000);
-        assert_eq!(bandwidth.capacity(Duration::from_secs(1)), 1_000_000);
-    }
-
-    #[test]
-    fn zero_duration_gives_max_bandwidth() {
-        // per_us == 0 → constructor stores u64::MAX bytes/µs
-        let bw = Bandwidth::new(100, Duration::ZERO);
-        assert_eq!(bw.bytes_per_us(), u64::MAX);
+        // 1 Kbps link on a 10 ms step: 1_000 * 10_000 / 8_000_000 = 1 byte
+        let bw = Bandwidth::new(1_000);
+        assert_eq!(bw.capacity(Duration::from_millis(10)), 1);
     }
 
     #[test]
     fn zero_bandwidth_capacity_always_zero() {
-        let bw = Bandwidth::new(0, Duration::from_secs(1));
+        let bw = Bandwidth::new(0);
         assert_eq!(bw.capacity(Duration::from_micros(1)), 0);
         assert_eq!(bw.capacity(Duration::from_secs(1)), 0);
     }
 
     #[test]
     fn max_bandwidth_saturates_to_u64_max() {
-        // Bandwidth::MAX = new(u64::MAX, 1s) = u64::MAX / 1_000_000 bytes/µs.
-        // With a large enough duration the product overflows u128 → saturates to u64::MAX.
-        // 1 second = 1_000_000 µs; bpu * 1_000_000 = (u64::MAX / 1_000_000) * 1_000_000
-        // which is close to but not over u64::MAX, so we need a longer duration.
         let max = Bandwidth::MAX;
+        // Bandwidth::MAX stores u64::MAX bits/s.
+        assert_eq!(max.bits_per_sec(), u64::MAX);
+        // capacity() over a long duration saturates to u64::MAX bytes.
         assert_eq!(max.capacity(Duration::from_secs(1_000_000)), u64::MAX);
     }
 
@@ -339,20 +362,18 @@ mod tests {
 
     #[test]
     fn clone_is_independent() {
-        let original = Bandwidth::new(5, Duration::from_micros(1));
+        let original = Bandwidth::new(40_000_000); // 40 Mbps
         let clone = original.clone();
-        // Mutate original via set()
-        original.set(Bandwidth::new(10, Duration::from_micros(1)));
-        // Clone must be unchanged
-        assert_eq!(clone.bytes_per_us(), 5);
-        assert_eq!(original.bytes_per_us(), 10);
+        original.set(Bandwidth::new(80_000_000)); // 80 Mbps
+        assert_eq!(clone.bits_per_sec(), 40_000_000);
+        assert_eq!(original.bits_per_sec(), 80_000_000);
     }
 
     #[test]
     fn ordering_and_eq() {
-        let low = Bandwidth::new(1, Duration::from_micros(1));
-        let high = Bandwidth::new(5, Duration::from_micros(1));
-        let low2 = Bandwidth::new(1, Duration::from_micros(1));
+        let low = Bandwidth::new(8_000_000);
+        let high = Bandwidth::new(40_000_000);
+        let low2 = Bandwidth::new(8_000_000);
 
         assert!(low < high);
         assert!(high > low);

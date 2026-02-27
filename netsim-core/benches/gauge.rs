@@ -7,7 +7,7 @@ use netsim_core::{
 use std::{sync::Arc, time::Duration};
 
 #[allow(clippy::declare_interior_mutable_const)]
-const BD_1KBPS: Bandwidth = Bandwidth::new(1_024, Duration::from_secs(1));
+const BD_8KBPS: Bandwidth = Bandwidth::new(8_192);
 const RESERVE_SIZE: u64 = 0xF7;
 
 fn gauge(c: &mut Criterion) {
@@ -23,7 +23,7 @@ fn gauge(c: &mut Criterion) {
 }
 
 fn congestion_channel(c: &mut Criterion) {
-    let congestion_channel = CongestionChannel::new(BD_1KBPS);
+    let congestion_channel = CongestionChannel::new(BD_8KBPS);
 
     let mut round = Round::ZERO;
 
@@ -44,7 +44,7 @@ fn congestion_channel(c: &mut Criterion) {
 
 fn upload(c: &mut Criterion) {
     let gauge = Arc::new(Gauge::new());
-    let channel = Arc::new(CongestionChannel::new(BD_1KBPS));
+    let channel = Arc::new(CongestionChannel::new(BD_8KBPS));
     let mut upload = Upload::new(gauge, channel);
 
     let mut round = Round::ZERO;
@@ -76,7 +76,7 @@ fn transit(c: &mut Criterion) {
     let recipient = network.new_node().build();
     network
         .configure_link(sender, recipient)
-        .set_bandwidth(BD_1KBPS)
+        .set_bandwidth(BD_8KBPS)
         .set_latency(Latency::ZERO)
         .apply();
 

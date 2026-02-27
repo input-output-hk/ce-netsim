@@ -67,7 +67,11 @@ pub(crate) struct LinkChannel {
 
 impl Default for Link {
     fn default() -> Self {
-        Self::new(Latency::default(), Bandwidth::default(), PacketLoss::default())
+        Self::new(
+            Latency::default(),
+            Bandwidth::default(),
+            PacketLoss::default(),
+        )
     }
 }
 
@@ -192,9 +196,9 @@ mod tests {
     use super::*;
     use crate::measure::Bandwidth;
 
-    // 1 byte/µs = 1_000_000 bytes/sec
+    // 8 Mbps
     #[allow(clippy::declare_interior_mutable_const)]
-    const BW: Bandwidth = Bandwidth::new(1, Duration::from_micros(1));
+    const BW: Bandwidth = Bandwidth::new(8_000_000);
 
     #[test]
     fn default() {
@@ -270,7 +274,7 @@ mod tests {
         assert!(!ch.completed());
 
         // 1_500ms advance: 500ms latency consumed, 1_000ms left for bandwidth
-        // capacity = 1 byte/µs * 1_000_000µs = 1_000_000
+        // capacity = 8 Mbps × 1_000ms = 1_000_000 bytes
         ch.update_capacity(round.next(), Duration::from_millis(1500));
         assert!(ch.rem_latency.is_zero());
         assert!(ch.completed());
@@ -282,7 +286,7 @@ mod tests {
     #[test]
     fn full_duplex_independence() {
         #[allow(clippy::declare_interior_mutable_const)]
-        const BW100: Bandwidth = Bandwidth::new(100, Duration::from_micros(1));
+        const BW100: Bandwidth = Bandwidth::new(800_000_000);
 
         let link = Link::new(Latency::ZERO, BW100, PacketLoss::default());
         let round = Round::ZERO.next();
@@ -294,11 +298,17 @@ mod tests {
         rev.update_capacity(round, Duration::from_micros(1));
 
         let transited_fwd = fwd.process(100);
-        assert_eq!(transited_fwd, 100, "forward should get its full 100-byte quota");
+        assert_eq!(
+            transited_fwd, 100,
+            "forward should get its full 100-byte quota"
+        );
         assert_eq!(fwd.bytes_in_transit(), 0);
 
         let transited_rev = rev.process(100);
-        assert_eq!(transited_rev, 100, "reverse should be unaffected by forward saturation");
+        assert_eq!(
+            transited_rev, 100,
+            "reverse should be unaffected by forward saturation"
+        );
         assert_eq!(rev.bytes_in_transit(), 0);
     }
 
@@ -307,7 +317,7 @@ mod tests {
     #[test]
     fn shared_channel_is_half_duplex() {
         #[allow(clippy::declare_interior_mutable_const)]
-        const BW100: Bandwidth = Bandwidth::new(100, Duration::from_micros(1));
+        const BW100: Bandwidth = Bandwidth::new(800_000_000);
 
         let channel = Arc::new(CongestionChannel::new(BW100));
         let link = Link::new_with_channels(
@@ -328,7 +338,10 @@ mod tests {
         assert_eq!(transited_fwd, 100);
 
         let transited_rev = rev.process(100);
-        assert_eq!(transited_rev, 0, "shared channel: reverse is starved after forward saturates");
+        assert_eq!(
+            transited_rev, 0,
+            "shared channel: reverse is starved after forward saturates"
+        );
     }
 
     /// Helper: create a LinkChannel directly from latency + bandwidth.

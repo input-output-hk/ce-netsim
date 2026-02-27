@@ -436,13 +436,12 @@ fn earth_geodesic() -> &'static Geodesic {
 
 // return the distance in meter between point1 and point2
 fn distance_between_karney(point1: Location, point2: Location) -> Result<f64, GeoError> {
-    let distance = earth_geodesic()
-        .inverse_distance(
-            point1.latitude.to_degrees(),
-            point1.longitude.to_degrees(),
-            point2.latitude.to_degrees(),
-            point2.longitude.to_degrees(),
-        );
+    let distance = earth_geodesic().inverse_distance(
+        point1.latitude.to_degrees(),
+        point1.longitude.to_degrees(),
+        point2.latitude.to_degrees(),
+        point2.longitude.to_degrees(),
+    );
 
     if distance.is_finite() && distance >= 0.0 {
         normalize_distance(distance)
@@ -808,9 +807,15 @@ mod tests {
     #[test]
     fn path_efficiency_try_from_u8_valid() {
         // 100% → FULL
-        assert_eq!(PathEfficiency::try_from(100u8).unwrap(), PathEfficiency::FULL);
+        assert_eq!(
+            PathEfficiency::try_from(100u8).unwrap(),
+            PathEfficiency::FULL
+        );
         // 50% → HALF
-        assert_eq!(PathEfficiency::try_from(50u8).unwrap(), PathEfficiency::HALF);
+        assert_eq!(
+            PathEfficiency::try_from(50u8).unwrap(),
+            PathEfficiency::HALF
+        );
         // try_into() spelling
         let via_into: PathEfficiency = 75u8.try_into().unwrap();
         assert!((via_into.as_percent() - 75.0).abs() < 1e-6);

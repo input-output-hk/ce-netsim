@@ -138,7 +138,9 @@ impl<T> LinkBuilder<'_, T> {
             network,
         } = self;
         let id = LinkId::new((a, b));
-        network.links.insert(id, Link::new(latency, bandwidth, packet_loss));
+        network
+            .links
+            .insert(id, Link::new(latency, bandwidth, packet_loss));
     }
 }
 

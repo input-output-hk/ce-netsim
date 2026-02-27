@@ -112,14 +112,14 @@ impl CongestionChannel {
 mod tests {
     use super::*;
 
-    // 1 byte/µs = 1_000_000 bytes/sec (minimum representable bandwidth)
+    // 8 Mbps
     #[allow(clippy::declare_interior_mutable_const)]
-    const BD_1MBPS: Bandwidth = Bandwidth::new(1, Duration::from_micros(1));
+    const BD_8MBPS: Bandwidth = Bandwidth::new(8_000_000);
 
     /// test that the initial capacity is always 0
     #[test]
     fn initial_capacity() {
-        let cc = CongestionChannel::new(BD_1MBPS);
+        let cc = CongestionChannel::new(BD_8MBPS);
 
         assert_eq!(cc.capacity(), 0);
     }
@@ -131,7 +131,7 @@ mod tests {
     ///
     #[test]
     fn update_capacity_round_zero() {
-        let cc = CongestionChannel::new(BD_1MBPS);
+        let cc = CongestionChannel::new(BD_8MBPS);
         let round = Round::new();
 
         let updated = cc.update_capacity(round, Duration::from_secs(1));
@@ -142,7 +142,7 @@ mod tests {
 
     #[test]
     fn update_capacity_same_round() {
-        let cc = CongestionChannel::new(BD_1MBPS);
+        let cc = CongestionChannel::new(BD_8MBPS);
         let round = Round::new().next();
 
         let updated = cc.update_capacity(round, Duration::from_secs(1));
@@ -155,7 +155,7 @@ mod tests {
 
     #[test]
     fn update_capacity_always_latest() {
-        let cc = CongestionChannel::new(BD_1MBPS);
+        let cc = CongestionChannel::new(BD_8MBPS);
         let round = Round::new().next();
 
         let updated = cc.update_capacity(round, Duration::from_secs(100));
@@ -169,7 +169,7 @@ mod tests {
 
     #[test]
     fn update_capacity_zero_duration_gives_zero_capacity() {
-        let cc = CongestionChannel::new(BD_1MBPS);
+        let cc = CongestionChannel::new(BD_8MBPS);
         let round = Round::new().next();
 
         let updated = cc.update_capacity(round, Duration::ZERO);
@@ -179,15 +179,15 @@ mod tests {
 
     #[test]
     fn set_bandwidth_takes_effect_on_next_round() {
-        let cc = CongestionChannel::new(BD_1MBPS);
+        let cc = CongestionChannel::new(BD_8MBPS);
         let round = Round::new().next();
 
-        // First round with 1 byte/µs → 1_000_000 bytes/s
+        // First round: 8 Mbps × 1 s = 1_000_000 bytes
         cc.update_capacity(round, Duration::from_secs(1));
         assert_eq!(cc.capacity(), 1_000_000);
 
-        // Change to 2 bytes/µs
-        cc.set_bandwidth(Bandwidth::new(2, Duration::from_micros(1)));
+        // Change to 16 Mbps
+        cc.set_bandwidth(Bandwidth::new(16_000_000));
 
         // Next round: new bandwidth applies
         let updated = cc.update_capacity(round.next(), Duration::from_secs(1));
@@ -197,7 +197,7 @@ mod tests {
 
     #[test]
     fn reserve_reduces_capacity() {
-        let cc = CongestionChannel::new(BD_1MBPS);
+        let cc = CongestionChannel::new(BD_8MBPS);
         let round = Round::new().next();
 
         cc.update_capacity(round, Duration::from_secs(1));
@@ -210,7 +210,7 @@ mod tests {
 
     #[test]
     fn round_regression_does_not_update() {
-        let cc = CongestionChannel::new(BD_1MBPS);
+        let cc = CongestionChannel::new(BD_8MBPS);
         let round = Round::new().next().next(); // round 2
 
         cc.update_capacity(round, Duration::from_secs(1));

@@ -11,7 +11,7 @@ use std::time::Duration;
 
 const MESSAGE_SIZE: u64 = 100_000_000;
 #[allow(clippy::declare_interior_mutable_const)]
-const BANDWIDTH: Bandwidth = Bandwidth::new(10 * 1_024, Duration::from_secs(1));
+const BANDWIDTH: Bandwidth = Bandwidth::new(81_920);
 
 struct TestData;
 impl Data for TestData {
@@ -24,7 +24,10 @@ fn send(c: &mut Criterion) {
     let mut network: Network<TestData> = Network::new();
     let node1 = network.new_node().build();
     let node2 = network.new_node().build();
-    network.configure_link(node1, node2).set_bandwidth(BANDWIDTH).apply();
+    network
+        .configure_link(node1, node2)
+        .set_bandwidth(BANDWIDTH)
+        .apply();
 
     c.bench_function("send", |b| {
         b.iter(|| {

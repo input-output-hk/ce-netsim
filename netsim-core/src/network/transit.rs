@@ -100,9 +100,9 @@ mod tests {
         node::{Node, NodeId},
     };
 
-    // 1 byte/µs = 1_000_000 bytes/sec (minimum representable bandwidth)
+    // 8 Mbps
     #[allow(clippy::declare_interior_mutable_const)]
-    const BD: Bandwidth = Bandwidth::new(1, Duration::from_micros(1));
+    const BD: Bandwidth = Bandwidth::new(8_000_000);
 
     #[test]
     fn simple_case() {

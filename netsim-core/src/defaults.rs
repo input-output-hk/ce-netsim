@@ -35,15 +35,15 @@ pub const DEFAULT_UPLOAD_BUFFER: u64 = u64::MAX;
 ///
 /// ```
 /// # use netsim_core::defaults::*;
+/// // 500 MiB/s = 500 * 1_048_576 bytes/s * 8 bits/byte = 4_194_304_000 bps
 /// assert_eq!(
 ///     DEFAULT_UPLOAD_BANDWIDTH.to_string(),
-///     "524000000bps"
+///     "4194304kbps"
 /// );
 /// ```
 ///
 #[allow(clippy::declare_interior_mutable_const)]
-pub const DEFAULT_UPLOAD_BANDWIDTH: Bandwidth =
-    Bandwidth::new(500 * 1_024 * 1_024, Duration::from_secs(1));
+pub const DEFAULT_UPLOAD_BANDWIDTH: Bandwidth = Bandwidth::new(500 * 1_024 * 1_024 * 8);
 
 /// Default download buffer size
 ///
@@ -63,12 +63,12 @@ pub const DEFAULT_DOWNLOAD_BUFFER: u64 = u64::MAX;
 ///
 /// ```
 /// # use netsim_core::defaults::*;
+/// // 1 GiB/s = 1_073_741_824 bytes/s * 8 bits/byte = 8_589_934_592 bps
 /// assert_eq!(
 ///     DEFAULT_DOWNLOAD_BANDWIDTH.to_string(),
-///     "1073000000bps"
+///     "8589934592bps"
 /// );
 /// ```
 ///
 #[allow(clippy::declare_interior_mutable_const)]
-pub const DEFAULT_DOWNLOAD_BANDWIDTH: Bandwidth =
-    Bandwidth::new(1_024 * 1_024 * 1_024, Duration::from_secs(1));
+pub const DEFAULT_DOWNLOAD_BANDWIDTH: Bandwidth = Bandwidth::new(1_024 * 1_024 * 1_024 * 8);
