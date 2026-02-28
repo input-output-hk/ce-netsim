@@ -1,4 +1,7 @@
-use netsim_core::network::{Network, Packet};
+use netsim_core::{
+    Latency,
+    network::{Network, Packet},
+};
 use std::time::Duration;
 
 fn main() -> anyhow::Result<()> {
@@ -6,12 +9,19 @@ fn main() -> anyhow::Result<()> {
 
     let sender = network
         .new_node()
-        .set_upload_bandwidth("1bps".parse()?)
+        .set_upload_bandwidth("10mbps".parse()?)
         .build();
     let receiver = network
         .new_node()
         .set_download_bandwidth("100mbps".parse()?)
         .build();
+
+    // Connect the two nodes with a 50ms latency link.
+    network
+        .configure_link(sender, receiver)
+        .set_latency(Latency::new(Duration::from_millis(50)))
+        .set_bandwidth("100mbps".parse()?)
+        .apply();
 
     let packet = Packet::builder(network.packet_id_generator())
         .from(sender)
@@ -32,10 +42,13 @@ fn main() -> anyhow::Result<()> {
         );
     };
 
-    network.advance_with(Duration::from_secs(10), |_| panic!());
-    network.advance_with(Duration::from_secs(1), |_| panic!());
+    // Packet should not arrive yet — still within the 50ms link latency.
+    network.advance_with(Duration::from_millis(10), |_| {
+        panic!("packet arrived too early")
+    });
 
-    network.advance_with(Duration::from_millis(1000), print);
+    // After enough time the packet is delivered.
+    network.advance_with(Duration::from_millis(100), print);
 
     Ok(())
 }
