@@ -331,7 +331,7 @@ where
         self.bytes_size
     }
 }
-unsafe impl<T> Send for Packet<T> {}
+//unsafe impl<T> Send for Packet<T> {}
 impl<T> fmt::Debug for Packet<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct(&format!("Packet<{}>", std::any::type_name::<T>()))
