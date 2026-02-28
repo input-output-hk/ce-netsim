@@ -245,10 +245,7 @@ fn minimum_step_duration_reflects_most_constrained_channel() {
         .configure_link(a, b)
         .set_bandwidth(Bandwidth::new(10_000))
         .apply();
-    assert_eq!(
-        network.minimum_step_duration(),
-        Duration::from_micros(800),
-    );
+    assert_eq!(network.minimum_step_duration(), Duration::from_micros(800));
 
     // Adding a slower node upload tightens the constraint further.
     // 1 Kbps upload: ceil(8_000_000 / 1_000) = 8_000 µs.

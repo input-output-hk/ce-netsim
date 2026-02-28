@@ -513,7 +513,10 @@ where
                 node.download_bandwidth().minimum_step_duration(),
             ]
         });
-        let link_mins = self.links.values().map(|link| link.bandwidth().minimum_step_duration());
+        let link_mins = self
+            .links
+            .values()
+            .map(|link| link.bandwidth().minimum_step_duration());
         node_mins.chain(link_mins).max().unwrap_or(Duration::ZERO)
     }
 
