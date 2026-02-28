@@ -101,11 +101,11 @@ let n2 = network
 
 # Packets
 
-The kind of messages that travel in the network are [`Packet`].
-They are _"envelop"_ structure around the actual message and
-contains metadata information that are necessary for the [`Network`]
-to process the transit of the message: (sender, recipient, size and
-what to do of the message if the packet is dropped before reception).
+The messages that travel in the network are [`Packet`]s.
+A packet is an envelope around the actual message and contains
+metadata necessary for the [`Network`] to process the transit:
+sender, recipient, byte size, and an optional drop handler for
+FFI scenarios.
 
 ```
 # use netsim_core::{node::NodeId, network::Network};
@@ -170,14 +170,12 @@ Now sending a packet is easy: just call [`Network::send`]
 # let n2 = network.new_node().build();
 # network.configure_link(n1, n2).apply();
 # let packet = Packet::builder(network.packet_id_generator()).from(n1).to(n2).data(()).build().unwrap();
-let packet_id = network.send(packet)?;
+network.send(packet)?;
 # Ok(()) }; f().unwrap();
 ```
 
-And you are nearly there now. The only things missing is to **advance**
-the network. This is because this is the core library and it allows
-you to control the clock of the network. You decide how fast time
-moves.
+The only step left is to **advance** the network clock. Since this is
+the core library, you control when and how fast time moves.
 
 ```
 # type Data = ();
@@ -226,8 +224,8 @@ pub use self::{
         Bandwidth, Latency, PacketLoss, PacketLossParseError, PacketLossRate, PacketLossRateError,
     },
     network::{
-        LinkBuilder, Network, Packet, PacketBuildError, PacketBuilder, PacketId, RouteError,
-        SendError,
+        LinkBuilder, Network, Packet, PacketBuildError, PacketBuilder, PacketId, PacketIdGenerator,
+        RouteError, SendError,
     },
     node::{Node, NodeId},
 };

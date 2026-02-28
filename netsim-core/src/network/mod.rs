@@ -72,9 +72,9 @@ pub struct Network<T> {
 /// | Setting | Default |
 /// |---------|---------|
 /// | Upload bandwidth | Unlimited ([`Bandwidth::MAX`]) |
-/// | Upload buffer | 64 MiB |
+/// | Upload buffer | Unlimited (`u64::MAX` bytes) |
 /// | Download bandwidth | Unlimited ([`Bandwidth::MAX`]) |
-/// | Download buffer | 64 MiB |
+/// | Download buffer | Unlimited (`u64::MAX` bytes) |
 ///
 /// ## Example
 ///

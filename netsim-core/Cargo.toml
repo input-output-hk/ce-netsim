@@ -4,6 +4,11 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.93.1"
 license = "Apache-2.0"
+description = "Low-level, deterministic network simulation primitives (nodes, links, bandwidth, latency, packet loss)"
+repository = "https://github.com/input-output-hk/ce-netsim"
+readme = "README.md"
+keywords = ["network", "simulation", "netsim", "testing", "deterministic"]
+categories = ["simulation", "network-programming", "development-tools::testing"]
 
 [dependencies]
 anyhow = "1.0"
