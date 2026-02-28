@@ -200,14 +200,23 @@ const G: u64 = 1_000_000_000;
 impl fmt::Display for Bandwidth {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let bps = self.bits_per_sec();
-        if bps < K || !bps.is_multiple_of(K) {
-            write!(f, "{bps}bps")
-        } else if bps < M || !bps.is_multiple_of(M) {
-            write!(f, "{}kbps", bps / K)
-        } else if bps < G || !bps.is_multiple_of(G) {
-            write!(f, "{}mbps", bps / M)
+        let (divisor, unit) = if bps < K {
+            return write!(f, "{bps}bps");
+        } else if bps < M {
+            (K, "kbps")
+        } else if bps < G {
+            (M, "mbps")
         } else {
-            write!(f, "{}gbps", bps / G)
+            (G, "gbps")
+        };
+
+        if bps.is_multiple_of(divisor) {
+            write!(f, "{}{unit}", bps / divisor)
+        } else {
+            let val = bps as f64 / divisor as f64;
+            let s = format!("{val:.2}");
+            let s = s.trim_end_matches('0');
+            write!(f, "{s}{unit}")
         }
     }
 }
@@ -248,12 +257,18 @@ impl FromStr for Bandwidth {
         let Some(Ok(token)) = lex.next() else {
             bail!("Expecting to parse a unit")
         };
-        let bps: u64 = match token {
-            BandwidthToken::Bps => number,
-            BandwidthToken::Kbps => number.saturating_mul(K),
-            BandwidthToken::Mbps => number.saturating_mul(M),
-            BandwidthToken::Gbps => number.saturating_mul(G),
+        let (multiplier, unit) = match token {
+            BandwidthToken::Bps => (1, "bps"),
+            BandwidthToken::Kbps => (K, "kbps"),
+            BandwidthToken::Mbps => (M, "mbps"),
+            BandwidthToken::Gbps => (G, "gbps"),
             BandwidthToken::Value => bail!("Expecting to parse a unit (bps, kbps, ...)"),
+        };
+        let Some(bps) = number.checked_mul(multiplier) else {
+            bail!(
+                "{number}{unit} overflows maximum bandwidth ({max})",
+                max = Bandwidth::MAX
+            )
         };
 
         ensure!(
@@ -323,8 +338,8 @@ mod tests {
         assert_eq!(Bandwidth(AtomicU64::new(1)).to_string(), "1bps");
         assert_eq!(Bandwidth(AtomicU64::new(999)).to_string(), "999bps");
         assert_eq!(Bandwidth(AtomicU64::new(1_000)).to_string(), "1kbps");
-        // Not an exact kbps multiple → stays in bps
-        assert_eq!(Bandwidth(AtomicU64::new(1_500)).to_string(), "1500bps");
+        // Not an exact kbps multiple → fractional with trailing zeros trimmed
+        assert_eq!(Bandwidth(AtomicU64::new(1_500)).to_string(), "1.5kbps");
         assert_eq!(Bandwidth(AtomicU64::new(42_000)).to_string(), "42kbps");
         assert_eq!(Bandwidth(AtomicU64::new(1_000_000)).to_string(), "1mbps");
         assert_eq!(Bandwidth(AtomicU64::new(42_000_000)).to_string(), "42mbps");
@@ -427,6 +442,25 @@ mod tests {
         );
         // Zero bandwidth: no step size helps
         assert_eq!(Bandwidth::new(0).minimum_step_duration(), Duration::ZERO);
+    }
+
+    /// Issue #13: parsing a bandwidth value that overflows u64 silently
+    /// saturates to u64::MAX instead of returning a parse error.
+    ///
+    /// `99999999999gbps` = 99_999_999_999 × 1_000_000_000 which exceeds
+    /// u64::MAX (18_446_744_073_709_551_615). The current implementation
+    /// uses `saturating_mul`, so this silently becomes Bandwidth::MAX —
+    /// indistinguishable from an intentional u64::MAX.
+    #[test]
+    #[should_panic]
+    fn parse_overflow_silently_saturates() {
+        let parsed: Bandwidth = "99999999999gbps".parse().unwrap();
+        // BUG: this should be an error, but instead it silently becomes MAX
+        assert_ne!(
+            parsed.bits_per_sec(),
+            u64::MAX,
+            "overflowing parse silently saturated to u64::MAX"
+        );
     }
 
     #[test]

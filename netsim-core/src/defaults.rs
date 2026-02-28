@@ -38,7 +38,7 @@ pub const DEFAULT_UPLOAD_BUFFER: u64 = u64::MAX;
 /// // 500 MiB/s = 500 * 1_048_576 bytes/s * 8 bits/byte = 4_194_304_000 bps
 /// assert_eq!(
 ///     DEFAULT_UPLOAD_BANDWIDTH.to_string(),
-///     "4194304kbps"
+///     "4.19gbps"
 /// );
 /// ```
 ///
@@ -66,7 +66,7 @@ pub const DEFAULT_DOWNLOAD_BUFFER: u64 = u64::MAX;
 /// // 1 GiB/s = 1_073_741_824 bytes/s * 8 bits/byte = 8_589_934_592 bps
 /// assert_eq!(
 ///     DEFAULT_DOWNLOAD_BANDWIDTH.to_string(),
-///     "8589934592bps"
+///     "8.59gbps"
 /// );
 /// ```
 ///
