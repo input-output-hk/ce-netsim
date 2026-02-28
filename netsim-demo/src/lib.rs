@@ -21,7 +21,7 @@ pub fn App() -> impl IntoView {
         <Meta charset="UTF-8" />
         <Meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-        <Router>
+        <Router base=option_env!("LEPTOS_BASE_PATH").unwrap_or_default()>
             <Routes fallback=|| view! { "Not Found" }>
                 <Route path=path!("/") view=PlaygroundPage />
             </Routes>

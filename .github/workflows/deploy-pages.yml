@@ -31,6 +31,8 @@ jobs:
       - name: Build netsim-demo
         run: trunk build --release --public-url /ce-netsim/
         working-directory: netsim-demo
+        env:
+          LEPTOS_BASE_PATH: /ce-netsim
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
