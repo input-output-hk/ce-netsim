@@ -17,7 +17,7 @@ use thiserror::Error;
 
 pub use self::{
     linked_list::{CursorMut, LinkedList},
-    packet::{Packet, PacketBuilder, PacketId, PacketIdGenerator},
+    packet::{Packet, PacketBuildError, PacketBuilder, PacketId, PacketIdGenerator},
     round::Round,
     route::Route,
     transit::Transit,

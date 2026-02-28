@@ -118,7 +118,7 @@ pub enum SendError<T> {
 pub enum SendToError<T> {
     /// The [`Packet`] could not be built (e.g. missing `from`/`to` fields).
     #[error("Failed to build message")]
-    FailedToBuildMessage(#[source] anyhow::Error),
+    FailedToBuildMessage(#[source] netsim_core::PacketBuildError),
     /// The multiplexer has shut down; the packet could not be delivered.
     #[error("Failed to send packet: disconnected")]
     Disconnected(Packet<T>),

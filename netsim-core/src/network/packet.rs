@@ -1,9 +1,23 @@
 use crate::{data::Data, node::NodeId};
-use anyhow::{Result, bail};
 use std::{
     fmt::{self},
     sync::{Arc, atomic::AtomicU64},
 };
+use thiserror::Error;
+
+/// Error returned by [`PacketBuilder::build`] when a required field is missing.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum PacketBuildError {
+    /// The sender node was not set via [`PacketBuilder::from`].
+    #[error("missing sender information (`from')")]
+    MissingSender,
+    /// The recipient node was not set via [`PacketBuilder::to`].
+    #[error("missing recipient information (`to')")]
+    MissingRecipient,
+    /// The payload was not set via [`PacketBuilder::data`].
+    #[error("missing packet content (`data')")]
+    MissingData,
+}
 
 /// A monotonically increasing generator for unique [`PacketId`] values.
 ///
@@ -228,17 +242,17 @@ where
     /// # Errors
     ///
     /// Returns an error if any of `from`, `to`, or `data` were not set.
-    pub fn build(self) -> Result<Packet<T>> {
+    pub fn build(self) -> Result<Packet<T>, PacketBuildError> {
         let id = self.generator.generate();
 
         let Some(from) = self.from else {
-            bail!("Missing sender information (`from')")
+            return Err(PacketBuildError::MissingSender);
         };
         let Some(to) = self.to else {
-            bail!("Missing recipient information (`to')")
+            return Err(PacketBuildError::MissingRecipient);
         };
         let Some(data) = self.data else {
-            bail!("Missing packet content (`data')")
+            return Err(PacketBuildError::MissingData);
         };
         let bytes_size = data.bytes_size();
         let data = Some(data);
@@ -363,36 +377,29 @@ mod tests {
 
     #[test]
     fn builder_missing_from() {
-        let Err(error) = Packet::<()>::builder(&PacketIdGenerator::new()).build() else {
-            panic!("Expecting an error because missing the `from'")
-        };
-
-        assert_eq!(error.to_string(), "Missing sender information (`from')");
+        let err = Packet::<()>::builder(&PacketIdGenerator::new())
+            .build()
+            .unwrap_err();
+        assert_eq!(err, PacketBuildError::MissingSender);
     }
 
     #[test]
     fn builder_missing_to() {
-        let Err(error) = Packet::<()>::builder(&PacketIdGenerator::new())
+        let err = Packet::<()>::builder(&PacketIdGenerator::new())
             .from(NodeId::ZERO)
             .build()
-        else {
-            panic!("Expecting an error because missing the `to'")
-        };
-
-        assert_eq!(error.to_string(), "Missing recipient information (`to')");
+            .unwrap_err();
+        assert_eq!(err, PacketBuildError::MissingRecipient);
     }
 
     #[test]
     fn builder_missing_data() {
-        let Err(error) = Packet::<()>::builder(&PacketIdGenerator::new())
+        let err = Packet::<()>::builder(&PacketIdGenerator::new())
             .from(NodeId::ZERO)
             .to(NodeId::ONE)
             .build()
-        else {
-            panic!("Expecting an error because missing the `data'")
-        };
-
-        assert_eq!(error.to_string(), "Missing packet content (`data')");
+            .unwrap_err();
+        assert_eq!(err, PacketBuildError::MissingData);
     }
 
     #[test]

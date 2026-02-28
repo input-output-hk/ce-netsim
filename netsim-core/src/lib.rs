@@ -225,7 +225,10 @@ pub use self::{
     measure::{
         Bandwidth, Latency, PacketLoss, PacketLossParseError, PacketLossRate, PacketLossRateError,
     },
-    network::{LinkBuilder, Network, Packet, PacketBuilder, PacketId, RouteError, SendError},
+    network::{
+        LinkBuilder, Network, Packet, PacketBuildError, PacketBuilder, PacketId, RouteError,
+        SendError,
+    },
     node::{Node, NodeId},
 };
 
