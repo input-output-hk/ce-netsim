@@ -1,6 +1,6 @@
 use clap::Parser;
-use netsim::{HasBytesSize, SimConfiguration, SimId, SimSocket};
-use netsim_core::{time::Duration, Bandwidth, Edge, EdgePolicy, Latency, NodePolicy, PacketLoss};
+use netsim::{Data, NodeId, SimSocket};
+use netsim_core::{Bandwidth, time::Duration};
 use std::{
     thread::{self, sleep},
     time::Instant,
@@ -36,56 +36,30 @@ struct Command {
 fn main() {
     let cmd = Command::parse();
 
-    let configuration = SimConfiguration {
-        idle_duration: cmd.idle.into_duration(),
-        ..SimConfiguration::default()
-    };
-
-    let mut context: SimContext = SimContext::with_config(configuration);
+    let mut context: SimContext = SimContext::new().unwrap();
 
     let sink = Sink {
-        socket: context.open().unwrap(),
+        socket: context
+            .open()
+            .set_download_bandwidth(cmd.bandwidth_down.clone())
+            .set_upload_bandwidth(cmd.bandwidth_up.clone())
+            .build()
+            .unwrap(),
         latency: cmd.latency,
     };
-    context
-        .set_node_policy(
-            sink.socket.id(),
-            NodePolicy {
-                bandwidth_down: cmd.bandwidth_down,
-                bandwidth_up: cmd.bandwidth_up,
-                location: None,
-            },
-        )
-        .unwrap();
 
     let mut taps = Vec::with_capacity(cmd.num_tap);
     for _ in 0..cmd.num_tap {
         let tap = Tap {
-            socket: context.open().unwrap(),
+            socket: context
+                .open()
+                .set_download_bandwidth(cmd.bandwidth_down.clone())
+                .set_upload_bandwidth(cmd.bandwidth_up.clone())
+                .build()
+                .unwrap(),
             sink_id: sink.socket.id(),
             every: cmd.every,
         };
-
-        context
-            .set_node_policy(
-                tap.socket.id(),
-                NodePolicy {
-                    bandwidth_down: cmd.bandwidth_down,
-                    bandwidth_up: cmd.bandwidth_up,
-                    location: None,
-                },
-            )
-            .unwrap();
-        context
-            .set_edge_policy(
-                Edge::new((tap.socket.id(), sink.socket.id())),
-                EdgePolicy {
-                    latency: Latency::new(cmd.latency.into_duration()),
-                    packet_loss: PacketLoss::NONE,
-                    ..Default::default()
-                },
-            )
-            .unwrap();
 
         taps.push(tap);
     }
@@ -115,7 +89,8 @@ impl Sink {
     fn work(mut self) {
         let mut delays = Vec::with_capacity(1_000_000);
 
-        while let Some((_from, msg)) = self.socket.recv() {
+        while let Ok(packet) = self.socket.recv_packet() {
+            let msg = packet.into_inner();
             let latency = msg.time.elapsed();
 
             let diff = if latency < self.latency.into_duration() {
@@ -131,7 +106,9 @@ impl Sink {
         let total = delays.iter().copied().sum::<std::time::Duration>();
         let avg = total / delays.len() as u32;
 
-        println!("sent {len} messages over. Msg received with an average of {avg:?} delays to the expected LATENCY");
+        println!(
+            "sent {len} messages over. Msg received with an average of {avg:?} delays to the expected LATENCY"
+        );
 
         for (i, delay) in delays.iter().copied().enumerate().take(10) {
             println!("[{i}]: additional latency of {delay:?}");
@@ -142,7 +119,7 @@ impl Sink {
 
 struct Tap {
     socket: SimSocket<Msg>,
-    sink_id: SimId,
+    sink_id: NodeId,
     every: Duration,
 }
 
@@ -173,7 +150,7 @@ impl Msg {
     }
 }
 
-impl HasBytesSize for Msg {
+impl Data for Msg {
     fn bytes_size(&self) -> u64 {
         self.size
     }

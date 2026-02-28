@@ -1,14 +1,38 @@
-use anyhow::{anyhow, bail, ensure, Result};
 use core::fmt;
 use logos::{Lexer, Logos};
-use std::{str::FromStr, time};
+use std::{num::ParseIntError, str::FromStr, time};
+use thiserror::Error;
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+/// Error returned when parsing a [`Duration`] from a string fails.
+#[derive(Debug, Error)]
+pub enum DurationParseError {
+    /// The input contained an unrecognised token.
+    #[error("failed to parse duration: {0}")]
+    InvalidToken(String),
+    /// A number was expected but something else was found.
+    #[error("expected a number at start of duration component: {0}")]
+    ExpectedNumber(String),
+    /// The numeric part could not be parsed as `u64`.
+    #[error("invalid number: {0}")]
+    InvalidNumber(#[from] ParseIntError),
+    /// A unit (ns, us, ms, s, m) was expected after the number.
+    #[error("expected a unit (ns, us, ms, s, m): {0}")]
+    MissingUnit(String),
+    /// The input string was empty.
+    #[error("cannot parse empty string as duration")]
+    Empty,
+}
+
+/// helper Duration wrapper to help with parsing
+/// and pretty printing durations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct Duration(std::time::Duration);
 
 impl Duration {
-    /// a duration of zero seconds
-    pub const ZERO: Self = Self(std::time::Duration::ZERO);
+    #[inline]
+    pub fn new(dur: std::time::Duration) -> Self {
+        Self(dur)
+    }
 
     #[inline]
     pub fn into_duration(self) -> time::Duration {
@@ -18,28 +42,57 @@ impl Duration {
 
 impl fmt::Display for Duration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        <time::Duration as fmt::Debug>::fmt(&self.0, f)
+        if self.0.is_zero() {
+            return write!(f, "0ms");
+        }
+
+        let subsec_nanos = self.0.subsec_nanos();
+        let seconds = self.0.as_secs();
+
+        let nanos = subsec_nanos % 1_000;
+        let micros = (subsec_nanos / 1_000) % 1_000;
+        let millis = (subsec_nanos / 1_000_000) % 1_000;
+        let secs = seconds % 60;
+        let minutes = seconds / 60;
+
+        if minutes > 0 {
+            write!(f, "{minutes}m")?;
+        }
+        if secs > 0 {
+            write!(f, "{secs}s")?;
+        }
+        if millis > 0 {
+            write!(f, "{millis}ms")?;
+        }
+        if micros > 0 {
+            write!(f, "{micros}µs")?;
+        }
+        if nanos > 0 {
+            write!(f, "{nanos}ns")?;
+        }
+
+        Ok(())
     }
 }
 
 impl FromStr for Duration {
-    type Err = anyhow::Error;
+    type Err = DurationParseError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut lex = Lexer::new(s);
 
         let mut durations = Vec::new();
 
         while let Some(next) = lex.next() {
-            let number: Token = next.map_err(|()| anyhow!("Failed to parse: {s}"))?;
+            let number: Token =
+                next.map_err(|()| DurationParseError::InvalidToken(s.to_string()))?;
 
-            ensure!(
-                number == Token::Value,
-                "Expecting duration to starts with number. Cannot parse {s}"
-            );
+            if number != Token::Value {
+                return Err(DurationParseError::ExpectedNumber(s.to_string()));
+            }
             let number: u64 = lex.slice().parse()?;
 
             let Some(Ok(measure)) = lex.next() else {
-                bail!("Expecting a measure, failed to parse: {s}")
+                return Err(DurationParseError::MissingUnit(s.to_string()));
             };
             let duration = match measure {
                 Token::NanoSeconds => time::Duration::from_nanos(number),
@@ -47,11 +100,14 @@ impl FromStr for Duration {
                 Token::MilliSeconds => time::Duration::from_millis(number),
                 Token::Seconds => time::Duration::from_secs(number),
                 Token::Minutes => time::Duration::from_secs(number * 60),
-                Token::Value => bail!("Failed to parse `{s}', expecting a measure."),
+                Token::Value => return Err(DurationParseError::MissingUnit(s.to_string())),
             };
             durations.push(duration);
         }
 
+        if durations.is_empty() {
+            return Err(DurationParseError::Empty);
+        }
         Ok(Self(durations.into_iter().sum()))
     }
 }
@@ -61,7 +117,7 @@ impl FromStr for Duration {
 enum Token {
     #[token("ns")]
     NanoSeconds,
-    #[regex("us|μs")]
+    #[regex("us|μs|µs")]
     MicroSeconds,
     #[token("ms")]
     MilliSeconds,
@@ -93,10 +149,67 @@ mod tests {
 
     #[test]
     fn parse() {
+        let Duration(duration) = "0ms".parse().unwrap();
+        assert_eq!(duration.as_millis(), 0);
+
         let Duration(duration) = "123ms".parse().unwrap();
         assert_eq!(duration.as_millis(), 123);
 
         let Duration(duration) = "1s 2000ms 3000000us".parse().unwrap();
         assert_eq!(duration.as_secs(), 6);
+    }
+
+    #[test]
+    fn display() {
+        assert_eq!(Duration::new(std::time::Duration::ZERO).to_string(), "0ms");
+
+        assert_eq!(
+            Duration::new(std::time::Duration::from_secs(5 * 60)).to_string(),
+            "5m"
+        );
+        assert_eq!(
+            Duration::new(std::time::Duration::from_secs(5)).to_string(),
+            "5s"
+        );
+        assert_eq!(
+            Duration::new(std::time::Duration::from_millis(5)).to_string(),
+            "5ms"
+        );
+        assert_eq!(
+            Duration::new(std::time::Duration::from_micros(5)).to_string(),
+            "5µs"
+        );
+        assert_eq!(
+            Duration::new(std::time::Duration::from_nanos(5)).to_string(),
+            "5ns"
+        );
+
+        assert_eq!(
+            Duration::new(
+                std::time::Duration::from_secs(5 * 60)
+                    + std::time::Duration::from_secs(42)
+                    + std::time::Duration::from_millis(999)
+                    + std::time::Duration::from_micros(123)
+                    + std::time::Duration::from_nanos(1)
+            )
+            .to_string(),
+            "5m42s999ms123µs1ns"
+        );
+    }
+
+    /// test that what is displayed can be parsed too
+    #[test]
+    fn display_parse() {
+        let duration = Duration::new(
+            std::time::Duration::from_secs(120)
+                + std::time::Duration::from_secs(1)
+                + std::time::Duration::from_millis(42)
+                + std::time::Duration::from_nanos(999),
+        );
+
+        let displayed = duration.to_string();
+        let parsed: Duration = displayed.parse().unwrap();
+
+        assert_eq!(parsed, duration);
     }
 }

@@ -24,6 +24,3 @@ jobs:
 
       - name: Run Netsim Example
         run: cargo run --example simple
-
-      - name: Run Netsim Async Example
-        run: cargo run --example simple_async

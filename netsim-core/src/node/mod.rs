@@ -1,0 +1,235 @@
+mod id;
+
+pub use self::id::NodeId;
+use crate::{
+    defaults::{DEFAULT_DOWNLOAD_BUFFER, DEFAULT_UPLOAD_BUFFER},
+    measure::{Bandwidth, CongestionChannel, Download, Gauge, Upload},
+};
+use std::sync::Arc;
+
+/// A simulated network endpoint managed by the [`Network`].
+///
+/// `Node` owns the upload and download congestion channels and byte-level
+/// buffers that model a real host's network stack. You never construct a
+/// `Node` directly — use [`Network::new_node`] to get a [`NodeBuilder`]
+/// which registers the node and returns its [`NodeId`].
+///
+/// ## Data flow
+///
+/// ```text
+/// Network::send()
+///      │
+///      ▼
+/// [ upload buffer ] ── upload channel (bandwidth limit) ──►
+///                                                          link (latency + bandwidth)
+/// ◄── download channel (bandwidth limit) ─── [ download buffer ]
+///                                                          │
+///                                                    Network::advance_with()
+///                                                    delivers packet to caller
+/// ```
+///
+/// - The **upload buffer** holds bytes queued for sending. If it is full,
+///   [`Network::send`] returns [`SendError::SenderBufferFull`].
+/// - The **download buffer** holds bytes that have arrived but not yet been
+///   read. If it overflows, the in-transit packet is marked corrupted and
+///   silently dropped at delivery.
+///
+/// [`Network`]: crate::network::Network
+/// [`Network::new_node`]: crate::network::Network::new_node
+/// [`NodeBuilder`]: crate::network::NodeBuilder
+/// [`Network::send`]: crate::network::Network::send
+/// [`SendError::SenderBufferFull`]: crate::network::SendError::SenderBufferFull
+pub struct Node {
+    id: NodeId,
+
+    /// the outbound buffer
+    ///
+    /// This is the amount of buffer available to submit to the network
+    /// if the buffer is full then subsequent call to `send` a new message
+    /// will fail
+    outbound_buffer: Arc<Gauge>,
+    outbound_channel: Arc<CongestionChannel>,
+
+    inbound_channel: Arc<CongestionChannel>,
+    inbound_buffer: Arc<Gauge>,
+}
+
+impl Node {
+    pub(crate) fn new(id: NodeId) -> Self {
+        Self {
+            id,
+            outbound_buffer: Arc::new(Gauge::with_capacity(DEFAULT_UPLOAD_BUFFER)),
+            outbound_channel: Arc::new(CongestionChannel::new(Bandwidth::default())),
+            inbound_channel: Arc::new(CongestionChannel::new(Bandwidth::default())),
+            inbound_buffer: Arc::new(Gauge::with_capacity(DEFAULT_DOWNLOAD_BUFFER)),
+        }
+    }
+
+    /// Returns the unique identifier of this node.
+    #[inline]
+    pub fn id(&self) -> NodeId {
+        self.id
+    }
+
+    /// Set the upload bandwidth limit for this node.
+    pub(crate) fn set_upload_bandwidth(&mut self, bandwidth: Bandwidth) {
+        self.outbound_channel.set_bandwidth(bandwidth);
+    }
+
+    /// Set the maximum upload buffer size in bytes.
+    pub(crate) fn set_upload_buffer(&mut self, buffer_size: u64) {
+        self.outbound_buffer.set_maximum_capacity(buffer_size);
+    }
+
+    /// Set the download bandwidth limit for this node.
+    pub(crate) fn set_download_bandwidth(&mut self, bandwidth: Bandwidth) {
+        self.inbound_channel.set_bandwidth(bandwidth);
+    }
+
+    /// Set the maximum download buffer size in bytes.
+    pub(crate) fn set_download_buffer(&mut self, buffer_size: u64) {
+        self.inbound_buffer.set_maximum_capacity(buffer_size);
+    }
+
+    /// Returns how many bytes are currently occupying the upload buffer.
+    pub fn upload_buffer_used(&self) -> u64 {
+        self.outbound_buffer.used_capacity()
+    }
+
+    /// Returns the maximum capacity of the upload buffer in bytes.
+    pub fn upload_buffer_max(&self) -> u64 {
+        self.outbound_buffer.maximum_capacity()
+    }
+
+    /// Returns how many bytes are currently occupying the download buffer.
+    pub fn download_buffer_used(&self) -> u64 {
+        self.inbound_buffer.used_capacity()
+    }
+
+    /// Returns the maximum capacity of the download buffer in bytes.
+    pub fn download_buffer_max(&self) -> u64 {
+        self.inbound_buffer.maximum_capacity()
+    }
+
+    /// Returns a reference to this node's upload bandwidth setting.
+    pub fn upload_bandwidth(&self) -> &Bandwidth {
+        self.outbound_channel.bandwidth()
+    }
+
+    /// Returns a reference to this node's download bandwidth setting.
+    pub fn download_bandwidth(&self) -> &Bandwidth {
+        self.inbound_channel.bandwidth()
+    }
+
+    /// Returns remaining upload channel capacity for the current round (bytes).
+    ///
+    /// After [`Network::advance_with`], this reflects how much of the upload
+    /// bandwidth budget was **not** consumed this tick.
+    ///
+    /// [`Network::advance_with`]: crate::network::Network::advance_with
+    pub fn upload_channel_remaining(&self) -> u64 {
+        self.outbound_channel.capacity()
+    }
+
+    /// Returns how many bytes of the upload channel budget were consumed this round.
+    pub fn upload_channel_used(&self) -> u64 {
+        self.outbound_channel.used()
+    }
+
+    /// Returns remaining download channel capacity for the current round (bytes).
+    ///
+    /// After [`Network::advance_with`], this reflects how much of the download
+    /// bandwidth budget was **not** consumed this tick.
+    ///
+    /// [`Network::advance_with`]: crate::network::Network::advance_with
+    pub fn download_channel_remaining(&self) -> u64 {
+        self.inbound_channel.capacity()
+    }
+
+    /// Returns how many bytes of the download channel budget were consumed this round.
+    pub fn download_channel_used(&self) -> u64 {
+        self.inbound_channel.used()
+    }
+
+    /// Returns an [`Upload`] handle for accounting bytes leaving this node.
+    pub(crate) fn upload(&self) -> Upload {
+        Upload::new(
+            Arc::clone(&self.outbound_buffer),
+            Arc::clone(&self.outbound_channel),
+        )
+    }
+
+    /// Returns a [`Download`] handle for accounting bytes arriving at this node.
+    pub(crate) fn download(&self) -> Download {
+        Download::new(
+            Arc::clone(&self.inbound_channel),
+            Arc::clone(&self.inbound_buffer),
+        )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_node_has_default_settings() {
+        let node = Node::new(NodeId::ZERO);
+
+        assert_eq!(node.id(), NodeId::ZERO);
+        assert_eq!(node.upload_buffer_used(), 0);
+        assert_eq!(node.upload_buffer_max(), DEFAULT_UPLOAD_BUFFER);
+        assert_eq!(node.download_buffer_used(), 0);
+        assert_eq!(node.download_buffer_max(), DEFAULT_DOWNLOAD_BUFFER);
+        // Node::new uses Bandwidth::default() (MAX), not the netsim defaults.
+        assert_eq!(node.upload_bandwidth(), &Bandwidth::default());
+        assert_eq!(node.download_bandwidth(), &Bandwidth::default());
+    }
+
+    #[test]
+    fn set_upload_bandwidth() {
+        let mut node = Node::new(NodeId::ZERO);
+        let bw = Bandwidth::new(1_000_000);
+
+        node.set_upload_bandwidth(bw.clone());
+
+        assert_eq!(node.upload_bandwidth(), &bw);
+    }
+
+    #[test]
+    fn set_download_bandwidth() {
+        let mut node = Node::new(NodeId::ZERO);
+        let bw = Bandwidth::new(2_000_000);
+
+        node.set_download_bandwidth(bw.clone());
+
+        assert_eq!(node.download_bandwidth(), &bw);
+    }
+
+    #[test]
+    fn set_upload_buffer() {
+        let mut node = Node::new(NodeId::ZERO);
+
+        node.set_upload_buffer(1024);
+
+        assert_eq!(node.upload_buffer_max(), 1024);
+    }
+
+    #[test]
+    fn set_download_buffer() {
+        let mut node = Node::new(NodeId::ZERO);
+
+        node.set_download_buffer(2048);
+
+        assert_eq!(node.download_buffer_max(), 2048);
+    }
+
+    #[test]
+    fn channel_remaining_starts_at_zero() {
+        let node = Node::new(NodeId::ZERO);
+
+        // Before any round advances, capacity is 0.
+        assert_eq!(node.upload_channel_remaining(), 0);
+        assert_eq!(node.download_channel_remaining(), 0);
+    }
+}

@@ -1,14 +1,34 @@
 [package]
 name = "netsim-core"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
+rust-version = "1.93.1"
 license = "Apache-2.0"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Low-level, deterministic network simulation primitives (nodes, links, bandwidth, latency, packet loss)"
+repository = "https://github.com/input-output-hk/ce-netsim"
+readme = "README.md"
+keywords = ["network", "simulation", "netsim", "testing", "deterministic"]
+categories = ["simulation", "network-programming", "development-tools::testing"]
 
 [dependencies]
-anyhow = "1.0.79"
-logos = "0.14.0"
+logos.workspace = true
+rand_core.workspace = true
+rand_chacha.workspace = true
+thiserror.workspace = true
 
-[features]
-thread_sleep_until = []
+[dev-dependencies]
+anyhow.workspace = true
+criterion.workspace = true
+indicatif.workspace = true
+
+[[bench]]
+name = "gauge"
+harness = false
+
+[[bench]]
+name = "geo"
+harness = false
+
+[[bench]]
+name = "network"
+harness = false
