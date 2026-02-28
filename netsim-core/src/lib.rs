@@ -264,7 +264,10 @@ fn minimum_step_duration_reflects_most_constrained_channel() {
 }
 
 /// Reproduce the exact demo topology's Server→Client path and send a 1 MB
-/// packet.
+/// packet. The link bandwidth (1 Gbps) exceeds the client's download
+/// bandwidth (200 Mbps), but the packet is delivered correctly because
+/// the link holds excess bytes (still on the wire) and releases them at
+/// the rate the receiver can accept.
 ///
 /// Configuration (from netsim-demo `build_demo_topology`):
 ///
@@ -273,18 +276,8 @@ fn minimum_step_duration_reflects_most_constrained_channel() {
 /// - **Link**: 10 ms latency, 1 Gbps bandwidth, 0 % packet loss
 /// - **Step**: 1 ms
 /// - **Packet**: 1 MB (1_048_576 bytes)
-///
-/// **Current behaviour**: the link bandwidth (1 Gbps = 125 KB/ms) exceeds
-/// the client's download bandwidth (200 Mbps = 25 KB/ms). After the 10 ms
-/// latency expires the link pushes 125 KB but the download channel can only
-/// absorb 25 KB. `Download::process` marks `size != processed` as corruption
-/// (UDP semantics — bytes that can't be received are lost).
-///
-/// This test documents the current drop behaviour. Fixing it requires
-/// changing `Download::process` so that excess bytes are buffered rather
-/// than discarded when the channel is bandwidth-limited.
 #[test]
-fn server_to_client_1mb_packet_drops_due_to_bandwidth_mismatch() {
+fn server_to_client_1mb_packet_no_drop() {
     let mut net: Network<Vec<u8>> = Network::new();
 
     // Server: 1 Gbps upload/download, 1 GB buffers
@@ -335,13 +328,8 @@ fn server_to_client_1mb_packet_drops_due_to_bandwidth_mismatch() {
         }
     }
 
-    // The packet is corrupted because the link pushes bytes faster than
-    // the download channel can absorb them.
-    assert!(
-        corrupted,
-        "packet should be corrupted due to bandwidth mismatch"
-    );
-    assert!(!delivered, "corrupted packet should not be delivered");
+    assert!(!corrupted, "1 MB packet should not be corrupted");
+    assert!(delivered, "1 MB packet should be delivered");
 }
 
 #[test]

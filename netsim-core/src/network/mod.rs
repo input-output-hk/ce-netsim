@@ -953,13 +953,17 @@ mod tests {
             .unwrap();
         net.send(pkt).unwrap();
 
-        // The corrupted transit should be removed but the packet should NOT
-        // be delivered (transit.complete() returns Err for corrupted packets).
+        // The download buffer (50 bytes) is smaller than the packet (200 bytes).
+        // Flow control holds excess bytes in the link, so the transit stalls
+        // rather than corrupting. The packet is never fully delivered.
         let mut delivered = 0u32;
         for _ in 0..100 {
             net.advance_with(Duration::from_millis(1), |_| delivered += 1);
         }
-        assert_eq!(delivered, 0, "corrupted packet should not be delivered");
+        assert_eq!(
+            delivered, 0,
+            "packet cannot complete when buffer is too small"
+        );
     }
 
     // ------------------------------------------------------------------

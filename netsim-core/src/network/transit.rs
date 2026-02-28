@@ -85,9 +85,15 @@ where
         let uploaded = self.upload.process();
 
         self.link.update_capacity(round, duration);
-        let transited = self.link.process(uploaded);
-
+        // Update download capacity before link processing so we can query
+        // how many bytes the receiver can absorb this tick. Bytes can't
+        // arrive faster than the receiver's interface speed — excess stays
+        // on the wire (in the link's pending buffer).
         self.download.update_capacity(round, duration);
+
+        let dl_available = self.download.available_capacity();
+        let transited = self.link.process(uploaded, dl_available);
+
         self.download.process(transited);
     }
 
@@ -217,8 +223,11 @@ mod tests {
         let _packet = transit.complete().unwrap();
     }
 
+    /// When the download buffer is smaller than the packet, the link holds
+    /// excess bytes (they're still on the wire). The transit stalls rather
+    /// than corrupting.
     #[test]
-    fn corruption_when_download_buffer_too_small() {
+    fn download_buffer_too_small_stalls_transit() {
         let sender = Node::new(NodeId::ZERO);
         let link = Link::new(Latency::ZERO, BD, PacketLoss::default());
         let mut recipient = Node::new(NodeId::ONE);
@@ -227,15 +236,18 @@ mod tests {
 
         let mut transit = make_transit(&sender, &link, &recipient, [0; 1_042]);
 
-        // Advance enough to transfer all bytes — the download buffer will overflow,
-        // marking the transit as corrupted.
         let round = Round::ZERO.next();
         transit.advance(round, Duration::from_millis(100));
 
         let round = round.next();
         transit.advance(round, Duration::from_millis(100));
 
-        assert!(transit.corrupted());
+        // Flow control prevents corruption: bytes back up in the link.
+        assert!(!transit.corrupted());
+        // But the packet cannot complete since the buffer is too small.
+        assert!(!transit.completed());
+        assert_eq!(transit.download_pending(), 100);
+        assert!(transit.link_pending() > 0);
     }
 
     #[test]

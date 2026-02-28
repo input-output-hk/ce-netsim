@@ -205,13 +205,19 @@ impl LinkChannel {
     /// Attempt to move `inbound` bytes through the channel.
     ///
     /// Bytes are held in `pending` until the latency countdown reaches zero,
-    /// at which point as many bytes as the channel allows are consumed and
-    /// returned as the number of bytes that transited.
-    pub fn process(&mut self, inbound: u64) -> u64 {
+    /// at which point up to `max_output` bytes (further limited by channel
+    /// bandwidth) are released. Excess bytes remain in `pending` — they are
+    /// still on the wire and will be delivered in future ticks.
+    ///
+    /// `max_output` models the physical constraint that bytes cannot arrive
+    /// at the receiver faster than the receiver's interface speed. Pass
+    /// `u64::MAX` to let channel bandwidth be the only limit.
+    pub fn process(&mut self, inbound: u64, max_output: u64) -> u64 {
         self.pending = self.pending.saturating_add(inbound);
 
         if self.rem_latency.is_zero() {
-            let transited = self.channel.reserve(self.pending);
+            let to_attempt = self.pending.min(max_output);
+            let transited = self.channel.reserve(to_attempt);
             self.pending = self.pending.saturating_sub(transited);
             transited
         } else {
@@ -264,7 +270,7 @@ mod tests {
         let mut ch = link.channel(LinkDirection::Forward);
         let round = Round::ZERO.next();
 
-        ch.process(24);
+        ch.process(24, u64::MAX);
         ch.update_capacity(round, Duration::from_millis(500));
 
         // A second channel from the same link starts fresh.
@@ -285,17 +291,17 @@ mod tests {
         let round = Round::ZERO.next();
         assert_eq!(ch.channel.capacity(), 0);
 
-        let processed = ch.process(24);
+        let processed = ch.process(24, u64::MAX);
         assert_eq!(processed, 0);
         assert_eq!(ch.bytes_in_transit(), 24);
 
         ch.update_capacity(round, Duration::from_micros(100));
 
-        let processed = ch.process(200);
+        let processed = ch.process(200, u64::MAX);
         assert_eq!(processed, 100);
         assert_eq!(ch.bytes_in_transit(), 124);
 
-        let processed = ch.process(0);
+        let processed = ch.process(0, u64::MAX);
         assert_eq!(processed, 0);
         assert_eq!(ch.bytes_in_transit(), 124);
     }
@@ -337,14 +343,14 @@ mod tests {
         fwd.update_capacity(round, Duration::from_micros(1));
         rev.update_capacity(round, Duration::from_micros(1));
 
-        let transited_fwd = fwd.process(100);
+        let transited_fwd = fwd.process(100, u64::MAX);
         assert_eq!(
             transited_fwd, 100,
             "forward should get its full 100-byte quota"
         );
         assert_eq!(fwd.bytes_in_transit(), 0);
 
-        let transited_rev = rev.process(100);
+        let transited_rev = rev.process(100, u64::MAX);
         assert_eq!(
             transited_rev, 100,
             "reverse should be unaffected by forward saturation"
@@ -374,10 +380,10 @@ mod tests {
         fwd.update_capacity(round, Duration::from_micros(1));
         rev.update_capacity(round, Duration::from_micros(1));
 
-        let transited_fwd = fwd.process(100);
+        let transited_fwd = fwd.process(100, u64::MAX);
         assert_eq!(transited_fwd, 100);
 
-        let transited_rev = rev.process(100);
+        let transited_rev = rev.process(100, u64::MAX);
         assert_eq!(
             transited_rev, 0,
             "shared channel: reverse is starved after forward saturates"
@@ -405,7 +411,7 @@ mod tests {
         assert_eq!(link.forward_channel_remaining(), 1_000_000);
 
         // Consume 400_000 bytes through the forward channel.
-        let transited = fwd.process(400_000);
+        let transited = fwd.process(400_000, u64::MAX);
         assert_eq!(transited, 400_000);
 
         // Remaining should reflect consumption.

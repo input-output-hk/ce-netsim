@@ -37,18 +37,17 @@ impl Download {
     /// Returns `true` if any bytes of this packet were lost in transit to the
     /// receiver's buffer.
     ///
-    /// In a simulation this models two real-world UDP drop conditions:
+    /// Corruption occurs when the receiver's inbound **buffer** overflows:
+    /// bytes that cleared the download channel could not be stored and were
+    /// silently dropped (UDP semantics).
     ///
-    /// 1. **Bandwidth saturation** — the link or receiver's download channel did
-    ///    not have enough remaining capacity in this time step, so fewer bytes
-    ///    were accepted than were offered.
-    /// 2. **Buffer overflow** — the receiver's inbound buffer was full, so bytes
-    ///    that cleared the channel could not be stored and were silently dropped.
+    /// Note: bandwidth mismatches between the link and the download channel
+    /// do **not** cause corruption. The link holds excess bytes in its pending
+    /// buffer (modelling bytes still on the wire) and releases them at the
+    /// rate the receiver can accept.
     ///
     /// Once set, the flag is **sticky**: it remains `true` for the lifetime of
     /// this [`Download`] even if subsequent time steps have ample capacity.
-    /// This reflects the fact that a UDP datagram with missing bytes is
-    /// permanently unusable regardless of later network conditions.
     ///
     /// From a simulation user's perspective, a `Transit` whose download is
     /// corrupted will be discarded rather than delivered — the `handle` closure
@@ -102,6 +101,21 @@ impl Download {
     /// is becoming a bottleneck.
     pub fn channel_remaining_bandwidth(&self) -> u64 {
         self.channel.capacity()
+    }
+
+    /// Returns how many bytes the download can accept this tick.
+    ///
+    /// This is the minimum of the remaining channel bandwidth and the
+    /// remaining buffer space. Used by [`Transit`] to cap how many bytes
+    /// the link releases: bytes can't physically arrive at the receiver
+    /// faster than the receiver's interface speed, so excess stays on the
+    /// wire (in the link's pending buffer).
+    ///
+    /// [`Transit`]: crate::network::Transit
+    pub fn available_capacity(&self) -> u64 {
+        self.channel
+            .capacity()
+            .min(self.buffer.remaining_capacity())
     }
 }
 
@@ -237,6 +251,38 @@ mod tests {
         assert_eq!(download.buffer_size(), 0);
         assert_eq!(download.channel_bandwidth(), &BW);
         assert_eq!(download.channel_remaining_bandwidth(), 0);
+    }
+
+    #[test]
+    fn available_capacity_is_min_of_channel_and_buffer() {
+        // Buffer: 200 bytes, channel: 8 Mbps
+        let gauge = Arc::new(Gauge::with_capacity(200));
+        let channel = Arc::new(CongestionChannel::new(BW));
+        let mut download = Download::new(channel, gauge);
+
+        // Before update_capacity, channel remaining is 0 → available is 0
+        assert_eq!(download.available_capacity(), 0);
+
+        let round = Round::ZERO.next();
+        // 8 Mbps × 1s = 1_000_000 bytes channel capacity
+        download.update_capacity(round, Duration::from_secs(1));
+
+        // Channel has 1_000_000, buffer has 200 → min is 200
+        assert_eq!(download.available_capacity(), 200);
+    }
+
+    #[test]
+    fn available_capacity_limited_by_channel() {
+        // Buffer: unlimited, channel: 8 Mbps × 50µs = 50 bytes
+        let gauge = Arc::new(Gauge::new());
+        let channel = Arc::new(CongestionChannel::new(BW));
+        let mut download = Download::new(channel, gauge);
+        let round = Round::ZERO.next();
+
+        download.update_capacity(round, Duration::from_micros(50));
+
+        // Channel has 50, buffer has u64::MAX → min is 50
+        assert_eq!(download.available_capacity(), 50);
     }
 
     #[test]
