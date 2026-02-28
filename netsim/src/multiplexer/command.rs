@@ -1,4 +1,3 @@
-use crate::stats::SimStats;
 use anyhow::{Context, Result, anyhow};
 use netsim_core::{Bandwidth, Latency, NodeId, Packet, PacketLoss};
 use std::sync::{
@@ -17,7 +16,6 @@ pub(crate) enum Command<T> {
         bandwidth: Bandwidth,
         packet_loss: PacketLoss,
     },
-    Stats(SyncSender<SimStats>),
 }
 
 pub(crate) struct NewNodeCommand<T> {
@@ -92,17 +90,6 @@ impl<T> CommandSender<T> {
             packet_loss,
         })
         .map_err(|error| anyhow!("Failed to send configure link command: {error}"))
-    }
-
-    pub(crate) fn send_stats(&mut self) -> Result<SimStats> {
-        let (reply, answer) = sync_channel(1);
-
-        self.send(Command::Stats(reply))
-            .map_err(|error| anyhow!("Failed to send stats command: {error}"))?;
-
-        answer
-            .recv()
-            .context("Failed to receive stats response from Multiplexer.")
     }
 }
 

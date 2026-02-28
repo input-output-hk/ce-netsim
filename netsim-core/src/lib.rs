@@ -215,20 +215,18 @@ pub mod link;
 pub mod measure;
 pub mod network;
 pub mod node;
-pub mod stats;
 pub mod time;
 
 #[cfg(test)]
 use std::time::Duration;
 
 pub use self::{
-    link::LinkId,
+    link::{Link, LinkId},
     measure::{
         Bandwidth, Latency, PacketLoss, PacketLossParseError, PacketLossRate, PacketLossRateError,
     },
     network::{LinkBuilder, Network, Packet, PacketBuilder, PacketId, RouteError, SendError},
-    node::NodeId,
-    stats::{LinkStats, NetworkStats, NodeStats},
+    node::{Node, NodeId},
 };
 
 #[test]

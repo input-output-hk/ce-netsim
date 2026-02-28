@@ -142,15 +142,6 @@ where
         SimSocketBuilder::new(self.commands.clone(), self.packet_id_generator.clone())
     }
 
-    /// Returns a point-in-time snapshot of the network state.
-    ///
-    /// Blocks briefly until the multiplexer processes the request.
-    /// Includes per-node buffer usage, bandwidth, drop counts,
-    /// and per-link latency, bandwidth, packet loss, and bytes in transit.
-    pub fn stats(&mut self) -> Result<crate::stats::SimStats> {
-        self.commands.send_stats()
-    }
-
     /// Configure the link between two nodes.
     ///
     /// Returns a [`SimLinkBuilder`] to set latency and bandwidth.
@@ -262,35 +253,6 @@ where
                 };
 
                 self.nodes.insert(node_id, NodeEntry { sender, dropped });
-            }
-            Command::Stats(reply) => {
-                use crate::stats::{NodeStats, SimStats};
-
-                let core_stats = self.network.stats();
-
-                let nodes = core_stats
-                    .nodes
-                    .into_iter()
-                    .map(|ns| {
-                        let packets_dropped = self
-                            .nodes
-                            .get(&ns.id)
-                            .map(|e| e.dropped.load(Ordering::Relaxed))
-                            .unwrap_or(0);
-                        NodeStats {
-                            inner: ns,
-                            packets_dropped,
-                        }
-                    })
-                    .collect();
-
-                let stats = SimStats {
-                    nodes,
-                    links: core_stats.links,
-                };
-
-                // ignore if the receiver was already dropped
-                let _ = reply.send(stats);
             }
         }
     }

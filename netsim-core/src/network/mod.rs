@@ -427,40 +427,34 @@ where
         Ok(())
     }
 
-    /// Returns a point-in-time snapshot of the network state.
-    ///
-    /// Includes per-node buffer and bandwidth stats and per-link latency,
-    /// bandwidth, packet loss, and bytes in transit.
-    pub fn stats(&self) -> crate::stats::NetworkStats {
-        use crate::stats::{LinkStats, NetworkStats, NodeStats};
+    /// Access a node by its [`NodeId`].
+    pub fn node(&self, id: NodeId) -> Option<&Node> {
+        self.nodes.get(&id)
+    }
 
-        let nodes = self
-            .nodes
-            .values()
-            .map(|node| NodeStats {
-                id: node.id(),
-                upload_buffer_used: node.upload_buffer_used(),
-                upload_buffer_max: node.upload_buffer_max(),
-                download_buffer_used: node.download_buffer_used(),
-                download_buffer_max: node.download_buffer_max(),
-                upload_bandwidth: node.upload_bandwidth().clone(),
-                download_bandwidth: node.download_bandwidth().clone(),
-            })
-            .collect();
+    /// Iterate over all nodes in the network.
+    pub fn nodes(&self) -> impl Iterator<Item = &Node> {
+        self.nodes.values()
+    }
 
-        let links = self
-            .links
-            .iter()
-            .map(|(id, link)| LinkStats {
-                id: *id,
-                latency: link.latency(),
-                bandwidth: link.bandwidth().clone(),
-                packet_loss: link.packet_loss(),
-                bytes_in_transit: 0,
-            })
-            .collect();
+    /// Access a link by its [`LinkId`].
+    pub fn link(&self, id: LinkId) -> Option<&Link> {
+        self.links.get(&id)
+    }
 
-        NetworkStats { nodes, links }
+    /// Iterate over all links in the network.
+    pub fn links(&self) -> impl Iterator<Item = (&LinkId, &Link)> {
+        self.links.iter()
+    }
+
+    /// Number of packets currently in transit.
+    pub fn packets_in_transit(&self) -> usize {
+        self.transit.len()
+    }
+
+    /// Current simulation round.
+    pub fn round(&self) -> Round {
+        self.round
     }
 
     /// Returns the minimum step [`Duration`] needed so that every configured
@@ -505,10 +499,12 @@ where
                 node.download_bandwidth().minimum_step_duration(),
             ]
         });
-        let link_mins = self
-            .links
-            .values()
-            .map(|link| link.bandwidth().minimum_step_duration());
+        let link_mins = self.links.values().flat_map(|link| {
+            [
+                link.forward_bandwidth().minimum_step_duration(),
+                link.reverse_bandwidth().minimum_step_duration(),
+            ]
+        });
         node_mins.chain(link_mins).max().unwrap_or(Duration::ZERO)
     }
 

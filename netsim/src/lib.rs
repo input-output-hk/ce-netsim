@@ -139,33 +139,10 @@ sim.shutdown()?;   // joins the background thread; returns any multiplexer error
 # Ok(()) }
 ```
 
-## Monitoring
-
-[`SimContext::stats`] returns a [`SimStats`] snapshot with per-node buffer
-usage and per-link bytes-in-transit, useful for debugging congestion:
-
-```rust,no_run
-use netsim::{SimContext, Data};
-# struct MyMsg;
-# impl Data for MyMsg { fn bytes_size(&self) -> u64 { 0 } }
-# fn example() -> anyhow::Result<()> {
-let mut sim = SimContext::<MyMsg>::new()?;
-let stats = sim.stats()?;
-for node in &stats.nodes {
-    println!(
-        "node {}: upload {}/{} bytes",
-        node.inner.id,
-        node.inner.upload_buffer_used,
-        node.inner.upload_buffer_max
-    );
-}
-# Ok(()) }
-```
 */
 
 mod multiplexer;
 mod socket;
-pub mod stats;
 
 // convenient re-export of `netsim_core` core objects
 pub use netsim_core::{
@@ -175,7 +152,6 @@ pub use netsim_core::{
 pub use self::{
     multiplexer::{SimContext, SimLinkBuilder},
     socket::{RecvError, SendError, SendToError, SimSocket, TryRecvError},
-    stats::{NodeStats, SimStats},
 };
 
 #[cfg(test)]

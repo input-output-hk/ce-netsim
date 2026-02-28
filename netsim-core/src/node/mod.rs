@@ -55,7 +55,7 @@ pub struct Node {
 }
 
 impl Node {
-    pub fn new(id: NodeId) -> Self {
+    pub(crate) fn new(id: NodeId) -> Self {
         Self {
             id,
             outbound_buffer: Arc::new(Gauge::with_capacity(DEFAULT_UPLOAD_BUFFER)),
@@ -72,22 +72,22 @@ impl Node {
     }
 
     /// Set the upload bandwidth limit for this node.
-    pub fn set_upload_bandwidth(&mut self, bandwidth: Bandwidth) {
+    pub(crate) fn set_upload_bandwidth(&mut self, bandwidth: Bandwidth) {
         self.outbound_channel.set_bandwidth(bandwidth);
     }
 
     /// Set the maximum upload buffer size in bytes.
-    pub fn set_upload_buffer(&mut self, buffer_size: u64) {
+    pub(crate) fn set_upload_buffer(&mut self, buffer_size: u64) {
         self.outbound_buffer.set_maximum_capacity(buffer_size);
     }
 
     /// Set the download bandwidth limit for this node.
-    pub fn set_download_bandwidth(&mut self, bandwidth: Bandwidth) {
+    pub(crate) fn set_download_bandwidth(&mut self, bandwidth: Bandwidth) {
         self.inbound_channel.set_bandwidth(bandwidth);
     }
 
     /// Set the maximum download buffer size in bytes.
-    pub fn set_download_buffer(&mut self, buffer_size: u64) {
+    pub(crate) fn set_download_buffer(&mut self, buffer_size: u64) {
         self.inbound_buffer.set_maximum_capacity(buffer_size);
     }
 
@@ -122,7 +122,7 @@ impl Node {
     }
 
     /// Returns an [`Upload`] handle for accounting bytes leaving this node.
-    pub fn upload(&self) -> Upload {
+    pub(crate) fn upload(&self) -> Upload {
         Upload::new(
             Arc::clone(&self.outbound_buffer),
             Arc::clone(&self.outbound_channel),
@@ -130,7 +130,7 @@ impl Node {
     }
 
     /// Returns a [`Download`] handle for accounting bytes arriving at this node.
-    pub fn download(&self) -> Download {
+    pub(crate) fn download(&self) -> Download {
         Download::new(
             Arc::clone(&self.inbound_channel),
             Arc::clone(&self.inbound_buffer),

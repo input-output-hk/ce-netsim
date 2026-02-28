@@ -82,7 +82,7 @@ impl Link {
     /// Both directions are initialised with the same `bandwidth`, but each has
     /// its own [`CongestionChannel`] so traffic in one direction does not
     /// consume capacity in the other.
-    pub fn new(latency: Latency, bandwidth: Bandwidth, packet_loss: PacketLoss) -> Self {
+    pub(crate) fn new(latency: Latency, bandwidth: Bandwidth, packet_loss: PacketLoss) -> Self {
         Self::new_with_channels(
             latency,
             Arc::new(CongestionChannel::new(bandwidth.clone())),
@@ -117,7 +117,7 @@ impl Link {
     /// implementing [`RngCore`] is accepted.
     ///
     /// [`Network`]: crate::network::Network
-    pub fn should_drop_packet<R: Rng>(&self, rng: &mut R) -> bool {
+    pub(crate) fn should_drop_packet<R: Rng>(&self, rng: &mut R) -> bool {
         self.packet_loss.should_drop(rng)
     }
 
@@ -149,9 +149,20 @@ impl Link {
         self.latency
     }
 
-    /// Returns the configured bandwidth for this link.
-    pub fn bandwidth(&self) -> &Bandwidth {
+    /// Returns the configured bandwidth for the forward direction
+    /// (smaller [`NodeId`] → larger [`NodeId`]).
+    ///
+    /// [`NodeId`]: crate::node::NodeId
+    pub fn forward_bandwidth(&self) -> &Bandwidth {
         self.channel_forward.bandwidth()
+    }
+
+    /// Returns the configured bandwidth for the reverse direction
+    /// (larger [`NodeId`] → smaller [`NodeId`]).
+    ///
+    /// [`NodeId`]: crate::node::NodeId
+    pub fn reverse_bandwidth(&self) -> &Bandwidth {
+        self.channel_reverse.bandwidth()
     }
 }
 

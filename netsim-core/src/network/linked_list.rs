@@ -53,6 +53,18 @@ impl<T> LinkedList<T> {
         Self { head, tail }
     }
 
+    pub fn len(&self) -> usize {
+        let mut count = 0;
+        let mut ptr = unsafe { (*self.head).next };
+        while !ptr.is_null() && !std::ptr::addr_eq(ptr, self.tail) {
+            if unsafe { (*ptr).value.is_some() } {
+                count += 1;
+            }
+            ptr = unsafe { (*ptr).next };
+        }
+        count
+    }
+
     pub fn is_empty(&self) -> bool {
         let Some(head) = (unsafe { self.head.as_ref() }) else {
             // we have a sigil in the head/tail so we should always
