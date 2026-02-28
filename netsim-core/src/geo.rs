@@ -4,9 +4,26 @@ pub(crate) mod geomath;
 use self::geodesic::Geodesic;
 
 use crate::measure::Latency;
-use anyhow::{Context as _, anyhow, ensure};
 use std::{fmt, str::FromStr, sync::OnceLock};
 use thiserror::Error;
+
+/// Error returned when parsing a geo type ([`Latitude`], [`Longitude`],
+/// [`Location`], or [`PathEfficiency`]) from a string fails.
+#[derive(Debug, Error)]
+pub enum GeoParseError {
+    #[error("Failed to parse Latitude: {0}")]
+    Latitude(String),
+    #[error("Failed to parse Longitude: {0}")]
+    Longitude(String),
+    #[error("Failed to parse Location: expected format `<latitude>, <longitude>`")]
+    LocationMissingComponent,
+    #[error("Failed to parse Location: expected a single comma separator")]
+    LocationExtraSeparator,
+    #[error("Failed to parse Location {0}: {1}")]
+    LocationComponent(&'static str, Box<GeoParseError>),
+    #[error("Failed to parse PathEfficiency: {0}")]
+    PathEfficiency(String),
+}
 
 #[derive(Debug, Clone, PartialEq, Error)]
 pub enum GeoError {
@@ -97,11 +114,11 @@ impl fmt::Display for Latitude {
 }
 
 impl FromStr for Latitude {
-    type Err = anyhow::Error;
+    type Err = GeoParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let degrees = parse_coordinate_degrees(s).context("Failed to parse Latitude")?;
-        Self::from_degrees(degrees).map_err(|error| anyhow!("Failed to parse Latitude: {error}"))
+        let degrees = parse_coordinate_degrees(s).map_err(GeoParseError::Latitude)?;
+        Self::from_degrees(degrees).map_err(|error| GeoParseError::Latitude(error.to_string()))
     }
 }
 
@@ -175,11 +192,11 @@ impl fmt::Display for Longitude {
 }
 
 impl FromStr for Longitude {
-    type Err = anyhow::Error;
+    type Err = GeoParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let degrees = parse_coordinate_degrees(s).context("Failed to parse Longitude")?;
-        Self::from_degrees(degrees).map_err(|error| anyhow!("Failed to parse Longitude: {error}"))
+        let degrees = parse_coordinate_degrees(s).map_err(GeoParseError::Longitude)?;
+        Self::from_degrees(degrees).map_err(|error| GeoParseError::Longitude(error.to_string()))
     }
 }
 
@@ -253,33 +270,28 @@ impl fmt::Display for Location {
 }
 
 impl FromStr for Location {
-    type Err = anyhow::Error;
+    type Err = GeoParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut parts = s.split(',');
         let Some(latitude_raw) = parts.next() else {
-            return Err(anyhow!(
-                "Failed to parse Location: expected format `<latitude>, <longitude>`"
-            ));
+            return Err(GeoParseError::LocationMissingComponent);
         };
         let Some(longitude_raw) = parts.next() else {
-            return Err(anyhow!(
-                "Failed to parse Location: expected format `<latitude>, <longitude>`"
-            ));
+            return Err(GeoParseError::LocationMissingComponent);
         };
-        ensure!(
-            parts.next().is_none(),
-            "Failed to parse Location: expected a single comma separator"
-        );
+        if parts.next().is_some() {
+            return Err(GeoParseError::LocationExtraSeparator);
+        }
 
         let latitude: Latitude = latitude_raw
             .trim()
             .parse()
-            .context("Failed to parse Location latitude")?;
+            .map_err(|e| GeoParseError::LocationComponent("latitude", Box::new(e)))?;
         let longitude: Longitude = longitude_raw
             .trim()
             .parse()
-            .context("Failed to parse Location longitude")?;
+            .map_err(|e| GeoParseError::LocationComponent("longitude", Box::new(e)))?;
 
         Ok(Self::new(latitude, longitude))
     }
@@ -378,25 +390,27 @@ impl fmt::Display for PathEfficiency {
 }
 
 impl FromStr for PathEfficiency {
-    type Err = anyhow::Error;
+    type Err = GeoParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let trimmed = s.trim();
-        ensure!(!trimmed.is_empty(), "Failed to parse PathEfficiency: empty");
+        if trimmed.is_empty() {
+            return Err(GeoParseError::PathEfficiency("empty".to_string()));
+        }
 
         let ratio = if let Some(percent) = trimmed.strip_suffix('%') {
             let percent = percent.trim().parse::<f64>().map_err(|error| {
-                anyhow!("Failed to parse PathEfficiency percent `{trimmed}`: {error}")
+                GeoParseError::PathEfficiency(format!("invalid percent `{trimmed}`: {error}"))
             })?;
             percent / 100.0
         } else {
             trimmed.parse::<f64>().map_err(|error| {
-                anyhow!("Failed to parse PathEfficiency ratio `{trimmed}`: {error}")
+                GeoParseError::PathEfficiency(format!("invalid ratio `{trimmed}`: {error}"))
             })?
         };
 
         Self::try_from_ratio(ratio)
-            .map_err(|error| anyhow!("Failed to parse PathEfficiency: {error}"))
+            .map_err(|error| GeoParseError::PathEfficiency(error.to_string()))
     }
 }
 
@@ -722,7 +736,7 @@ pub fn latency_between_locations_vincenty(
 const DEGREE_SUFFIX: char = '\u{00BA}';
 const ALT_DEGREE_SUFFIX: char = '\u{00B0}';
 
-fn parse_coordinate_degrees(input: &str) -> anyhow::Result<f64> {
+fn parse_coordinate_degrees(input: &str) -> Result<f64, String> {
     let trimmed = input.trim();
     let trimmed = trimmed
         .strip_suffix(DEGREE_SUFFIX)
@@ -730,11 +744,13 @@ fn parse_coordinate_degrees(input: &str) -> anyhow::Result<f64> {
         .unwrap_or(trimmed)
         .trim();
 
-    ensure!(!trimmed.is_empty(), "cannot parse from empty string");
+    if trimmed.is_empty() {
+        return Err("cannot parse from empty string".to_string());
+    }
 
     trimmed
         .parse::<f64>()
-        .map_err(|error| anyhow!("failed to parse `{input}`: {error}"))
+        .map_err(|error| format!("failed to parse `{input}`: {error}"))
 }
 
 #[cfg(test)]

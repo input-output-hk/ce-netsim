@@ -5,6 +5,27 @@ members = [
 ]
 resolver = "3"
 
+[workspace.dependencies]
+# shared
+anyhow = "1.0"
+thiserror = "2.0"
+
+# netsim-core
+logos = "0.14"
+rand_core = "0.10"
+rand_chacha = "0.10"
+
+# netsim-core dev
+criterion = { version = "0.4", features = ["html_reports"] }
+indicatif = "0.17"
+
+# netsim dev
+clap = { version = "4.5", features = ["derive"] }
+rand = "0.8"
+
+# internal
+netsim-core = { path = "netsim-core", version = "0.1" }
+
 [profile.release]
 lto = true
 opt-level = 3

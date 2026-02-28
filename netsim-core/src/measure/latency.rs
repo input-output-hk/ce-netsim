@@ -86,7 +86,7 @@ impl fmt::Display for Latency {
 }
 
 impl FromStr for Latency {
-    type Err = anyhow::Error;
+    type Err = crate::time::DurationParseError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let duration = crate::time::Duration::from_str(s)?;
 

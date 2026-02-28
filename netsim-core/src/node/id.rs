@@ -1,5 +1,4 @@
-use anyhow::anyhow;
-use std::{fmt, str};
+use std::{fmt, num::ParseIntError, str};
 
 /// Unique identifier for a node in the simulated network.
 ///
@@ -78,9 +77,9 @@ impl NodeId {
 }
 
 impl str::FromStr for NodeId {
-    type Err = anyhow::Error;
+    type Err = ParseIntError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        s.parse().map(Self).map_err(|error| anyhow!("{error}"))
+        s.parse().map(Self)
     }
 }
 

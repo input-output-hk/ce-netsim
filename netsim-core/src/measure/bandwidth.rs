@@ -1,11 +1,32 @@
-use anyhow::{bail, ensure};
 use logos::{Lexer, Logos};
 use std::{
     fmt,
+    num::ParseIntError,
     str::FromStr,
     sync::atomic::{AtomicU64, Ordering},
     time::Duration,
 };
+use thiserror::Error;
+
+/// Error returned when parsing a [`Bandwidth`] from a string fails.
+#[derive(Debug, Error)]
+pub enum BandwidthParseError {
+    /// No number was found at the start of the input.
+    #[error("expected a number")]
+    MissingNumber,
+    /// The numeric part could not be parsed as `u64`.
+    #[error("invalid number: {0}")]
+    InvalidNumber(#[from] ParseIntError),
+    /// No unit was found after the number.
+    #[error("expected a unit (bps, kbps, mbps, gbps)")]
+    MissingUnit,
+    /// The parsed value overflows the maximum representable bandwidth.
+    #[error("{input} overflows maximum bandwidth ({max})")]
+    Overflow { input: String, max: String },
+    /// Unexpected tokens were found after the bandwidth value.
+    #[error("unexpected trailing tokens")]
+    TrailingTokens,
+}
 
 /// The [`Bandwidth`] that can be used to determine how much
 /// data can be processed during a certain [`Duration`].
@@ -255,35 +276,35 @@ enum BandwidthToken {
 }
 
 impl FromStr for Bandwidth {
-    type Err = anyhow::Error;
+    type Err = BandwidthParseError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut lex = Lexer::<'_, BandwidthToken>::new(s);
 
         let Some(Ok(BandwidthToken::Value)) = lex.next() else {
-            bail!("Expecting to parse a number")
+            return Err(BandwidthParseError::MissingNumber);
         };
         let number: u64 = lex.slice().parse()?;
         let Some(Ok(token)) = lex.next() else {
-            bail!("Expecting to parse a unit")
+            return Err(BandwidthParseError::MissingUnit);
         };
         let (multiplier, unit) = match token {
             BandwidthToken::Bps => (1, "bps"),
             BandwidthToken::Kbps => (K, "kbps"),
             BandwidthToken::Mbps => (M, "mbps"),
             BandwidthToken::Gbps => (G, "gbps"),
-            BandwidthToken::Value => bail!("Expecting to parse a unit (bps, kbps, ...)"),
+            BandwidthToken::Value => return Err(BandwidthParseError::MissingUnit),
         };
         let Some(bps) = number.checked_mul(multiplier) else {
-            bail!(
-                "{number}{unit} overflows maximum bandwidth ({max})",
-                max = Bandwidth::MAX
-            )
+            let max = Bandwidth::MAX;
+            return Err(BandwidthParseError::Overflow {
+                input: format!("{number}{unit}"),
+                max: max.to_string(),
+            });
         };
 
-        ensure!(
-            lex.next().is_none(),
-            "Not expecting any other tokens to parse a bandwidth"
-        );
+        if lex.next().is_some() {
+            return Err(BandwidthParseError::TrailingTokens);
+        }
 
         Ok(Self::new(bps))
     }

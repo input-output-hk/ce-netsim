@@ -219,15 +219,18 @@ pub mod time;
 use std::time::Duration;
 
 pub use self::{
+    geo::{GeoError, GeoParseError},
     link::{Link, LinkId},
     measure::{
-        Bandwidth, Latency, PacketLoss, PacketLossParseError, PacketLossRate, PacketLossRateError,
+        Bandwidth, BandwidthParseError, Latency, PacketLoss, PacketLossParseError, PacketLossRate,
+        PacketLossRateError,
     },
     network::{
         LinkBuilder, Network, Packet, PacketBuildError, PacketBuilder, PacketId, PacketIdGenerator,
         RouteError, SendError,
     },
     node::{Node, NodeId},
+    time::DurationParseError,
 };
 
 #[test]

@@ -1,7 +1,27 @@
-use anyhow::{Result, anyhow, bail, ensure};
 use core::fmt;
 use logos::{Lexer, Logos};
-use std::{str::FromStr, time};
+use std::{num::ParseIntError, str::FromStr, time};
+use thiserror::Error;
+
+/// Error returned when parsing a [`Duration`] from a string fails.
+#[derive(Debug, Error)]
+pub enum DurationParseError {
+    /// The input contained an unrecognised token.
+    #[error("failed to parse duration: {0}")]
+    InvalidToken(String),
+    /// A number was expected but something else was found.
+    #[error("expected a number at start of duration component: {0}")]
+    ExpectedNumber(String),
+    /// The numeric part could not be parsed as `u64`.
+    #[error("invalid number: {0}")]
+    InvalidNumber(#[from] ParseIntError),
+    /// A unit (ns, us, ms, s, m) was expected after the number.
+    #[error("expected a unit (ns, us, ms, s, m): {0}")]
+    MissingUnit(String),
+    /// The input string was empty.
+    #[error("cannot parse empty string as duration")]
+    Empty,
+}
 
 /// helper Duration wrapper to help with parsing
 /// and pretty printing durations.
@@ -56,23 +76,23 @@ impl fmt::Display for Duration {
 }
 
 impl FromStr for Duration {
-    type Err = anyhow::Error;
+    type Err = DurationParseError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut lex = Lexer::new(s);
 
         let mut durations = Vec::new();
 
         while let Some(next) = lex.next() {
-            let number: Token = next.map_err(|()| anyhow!("Failed to parse: {s}"))?;
+            let number: Token =
+                next.map_err(|()| DurationParseError::InvalidToken(s.to_string()))?;
 
-            ensure!(
-                number == Token::Value,
-                "Expecting duration to starts with number. Cannot parse {s}"
-            );
+            if number != Token::Value {
+                return Err(DurationParseError::ExpectedNumber(s.to_string()));
+            }
             let number: u64 = lex.slice().parse()?;
 
             let Some(Ok(measure)) = lex.next() else {
-                bail!("Expecting a measure, failed to parse: {s}")
+                return Err(DurationParseError::MissingUnit(s.to_string()));
             };
             let duration = match measure {
                 Token::NanoSeconds => time::Duration::from_nanos(number),
@@ -80,15 +100,14 @@ impl FromStr for Duration {
                 Token::MilliSeconds => time::Duration::from_millis(number),
                 Token::Seconds => time::Duration::from_secs(number),
                 Token::Minutes => time::Duration::from_secs(number * 60),
-                Token::Value => bail!("Failed to parse `{s}', expecting a measure."),
+                Token::Value => return Err(DurationParseError::MissingUnit(s.to_string())),
             };
             durations.push(duration);
         }
 
-        ensure!(
-            !durations.is_empty(),
-            "Cannot parse empty string as duration"
-        );
+        if durations.is_empty() {
+            return Err(DurationParseError::Empty);
+        }
         Ok(Self(durations.into_iter().sum()))
     }
 }

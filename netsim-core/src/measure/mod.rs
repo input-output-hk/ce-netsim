@@ -7,7 +7,7 @@ mod packet_loss;
 mod upload;
 
 pub use self::{
-    bandwidth::Bandwidth,
+    bandwidth::{Bandwidth, BandwidthParseError},
     congestion_channel::CongestionChannel,
     download::Download,
     gauge::Gauge,

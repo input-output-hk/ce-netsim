@@ -11,15 +11,15 @@ keywords = ["network", "simulation", "netsim", "testing", "deterministic"]
 categories = ["simulation", "network-programming", "development-tools::testing"]
 
 [dependencies]
-anyhow = "1.0"
-logos = "0.14"
-rand_core = { version = "0.10" }
-rand_chacha = { version = "0.10" }
-thiserror = "2.0"
+logos.workspace = true
+rand_core.workspace = true
+rand_chacha.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
-criterion = { version = "0.4", features = ["html_reports"] }
-indicatif = "0.17"
+anyhow.workspace = true
+criterion.workspace = true
+indicatif.workspace = true
 
 [[bench]]
 name = "gauge"
