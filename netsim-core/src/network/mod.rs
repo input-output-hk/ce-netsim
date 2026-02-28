@@ -6,7 +6,7 @@ mod transit;
 
 use crate::{
     data::Data,
-    link::{Link, LinkDirection, LinkId},
+    link::{Link, LinkId},
     measure::{Bandwidth, Latency},
     node::{Node, NodeId},
 };
@@ -19,7 +19,7 @@ pub use self::{
     linked_list::{CursorMut, LinkedList},
     packet::{Packet, PacketBuilder, PacketId, PacketIdGenerator},
     round::Round,
-    route::{Route, RouteBuilder},
+    route::Route,
     transit::Transit,
 };
 
@@ -380,11 +380,6 @@ where
     ///   nodes. Call [`Network::configure_link`] to establish a direct connection.
     pub fn route(&self, from: NodeId, to: NodeId) -> Result<Route, RouteError> {
         let edge = LinkId::new((from, to));
-        let direction = if from < to {
-            LinkDirection::Forward
-        } else {
-            LinkDirection::Reverse
-        };
 
         let Some(from) = self.nodes.get(&from) else {
             return Err(RouteError::SenderNotFound { sender: from });
@@ -396,14 +391,7 @@ where
             return Err(RouteError::LinkNotFound { link: edge });
         };
 
-        let route = RouteBuilder::new()
-            .upload(from)
-            .link(link, direction)
-            .download(to)
-            .build()
-            .expect("Failed to build a Route");
-
-        Ok(route)
+        Ok(Route::new(from, link, to))
     }
 
     /// Send a packet through the network.

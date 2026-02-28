@@ -94,7 +94,7 @@ where
 mod tests {
     use super::*;
     use crate::{
-        link::{Link, LinkDirection},
+        link::Link,
         measure::{Bandwidth, Latency, PacketLoss},
         network::{Route, packet::PacketIdGenerator},
         node::{Node, NodeId},
@@ -116,12 +116,7 @@ mod tests {
             .build()
             .unwrap();
 
-        let transit = Route::builder()
-            .upload(&sender)
-            .link(&link, LinkDirection::Forward)
-            .download(&recipient)
-            .build()
-            .unwrap()
+        let transit = Route::new(&sender, &link, &recipient)
             .transit(data)
             .unwrap();
 
