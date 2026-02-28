@@ -6,6 +6,7 @@ use crate::{
 };
 use std::time::Duration;
 
+#[derive(Debug)]
 pub struct Transit<T> {
     upload: Upload,
     link: LinkChannel,
@@ -104,21 +105,30 @@ mod tests {
     #[allow(clippy::declare_interior_mutable_const)]
     const BD: Bandwidth = Bandwidth::new(8_000_000);
 
-    #[test]
-    fn simple_case() {
-        let sender: Node = Node::new(NodeId::ZERO);
-        let link = Link::new(Latency::ZERO, BD, PacketLoss::default());
-        let recipient: Node = Node::new(NodeId::ONE);
+    /// Helper: build a Transit from nodes, link, and payload.
+    fn make_transit(
+        sender: &Node,
+        link: &Link,
+        recipient: &Node,
+        payload: [u8; 1_042],
+    ) -> Transit<[u8; 1_042]> {
         let data = Packet::builder(&PacketIdGenerator::new())
             .from(sender.id())
             .to(recipient.id())
-            .data([0; 1_042])
+            .data(payload)
             .build()
             .unwrap();
 
-        let transit = Route::new(&sender, &link, &recipient)
-            .transit(data)
-            .unwrap();
+        Route::new(sender, link, recipient).transit(data).unwrap()
+    }
+
+    #[test]
+    fn simple_case() {
+        let sender = Node::new(NodeId::ZERO);
+        let link = Link::new(Latency::ZERO, BD, PacketLoss::default());
+        let recipient = Node::new(NodeId::ONE);
+
+        let transit = make_transit(&sender, &link, &recipient, [0; 1_042]);
 
         assert!(!transit.completed());
         assert!(!transit.corrupted());
@@ -139,8 +149,104 @@ mod tests {
         assert!(transit.completed());
         assert!(!transit.corrupted());
 
-        let Ok(_packet) = transit.complete() else {
-            panic!("Transit didn't complete")
-        };
+        let _packet = transit.complete().unwrap();
+    }
+
+    #[test]
+    fn latency_delays_completion() {
+        let sender = Node::new(NodeId::ZERO);
+        // 100ms latency, high bandwidth so bytes transfer instantly.
+        let link = Link::new(
+            Latency::new(Duration::from_millis(100)),
+            Bandwidth::MAX,
+            PacketLoss::default(),
+        );
+        let recipient = Node::new(NodeId::ONE);
+
+        let mut transit = make_transit(&sender, &link, &recipient, [0; 1_042]);
+
+        // After 50ms the bytes have been uploaded and downloaded, but the
+        // link latency countdown hasn't finished yet.
+        let round = Round::ZERO.next();
+        transit.advance(round, Duration::from_millis(50));
+
+        assert!(!transit.completed(), "should still be in-flight (latency)");
+        assert!(!transit.corrupted());
+
+        // After another 60ms the latency is satisfied (total 110ms > 100ms).
+        let round = round.next();
+        transit.advance(round, Duration::from_millis(60));
+
+        assert!(transit.completed());
+        let _packet = transit.complete().unwrap();
+    }
+
+    #[test]
+    fn corruption_when_download_buffer_too_small() {
+        let sender = Node::new(NodeId::ZERO);
+        let link = Link::new(Latency::ZERO, BD, PacketLoss::default());
+        let mut recipient = Node::new(NodeId::ONE);
+        // Set a download buffer smaller than the packet.
+        recipient.set_download_buffer(100);
+
+        let mut transit = make_transit(&sender, &link, &recipient, [0; 1_042]);
+
+        // Advance enough to transfer all bytes — the download buffer will overflow,
+        // marking the transit as corrupted.
+        let round = Round::ZERO.next();
+        transit.advance(round, Duration::from_millis(100));
+
+        let round = round.next();
+        transit.advance(round, Duration::from_millis(100));
+
+        assert!(transit.corrupted());
+    }
+
+    #[test]
+    fn sender_buffer_full_returns_error() {
+        let mut sender = Node::new(NodeId::ZERO);
+        sender.set_upload_buffer(100); // smaller than the 1042-byte packet
+        let link = Link::new(Latency::ZERO, BD, PacketLoss::default());
+        let recipient = Node::new(NodeId::ONE);
+
+        let data = Packet::builder(&PacketIdGenerator::new())
+            .from(sender.id())
+            .to(recipient.id())
+            .data([0u8; 1_042])
+            .build()
+            .unwrap();
+
+        let err = Route::new(&sender, &link, &recipient)
+            .transit(data)
+            .unwrap_err();
+
+        assert!(
+            matches!(err, SendError::SenderBufferFull { .. }),
+            "expected SenderBufferFull, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn zero_byte_packet_completes_immediately() {
+        let sender = Node::new(NodeId::ZERO);
+        let link = Link::new(Latency::ZERO, BD, PacketLoss::default());
+        let recipient = Node::new(NodeId::ONE);
+
+        let data = Packet::builder(&PacketIdGenerator::new())
+            .from(sender.id())
+            .to(recipient.id())
+            .data(())
+            .build()
+            .unwrap();
+
+        let mut transit = Route::new(&sender, &link, &recipient)
+            .transit(data)
+            .unwrap();
+
+        let round = Round::ZERO.next();
+        transit.advance(round, Duration::from_micros(1));
+
+        assert!(transit.completed());
+        assert!(!transit.corrupted());
     }
 }

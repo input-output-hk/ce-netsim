@@ -137,3 +137,60 @@ impl Node {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_node_has_default_settings() {
+        let node = Node::new(NodeId::ZERO);
+
+        assert_eq!(node.id(), NodeId::ZERO);
+        assert_eq!(node.upload_buffer_used(), 0);
+        assert_eq!(node.upload_buffer_max(), DEFAULT_UPLOAD_BUFFER);
+        assert_eq!(node.download_buffer_used(), 0);
+        assert_eq!(node.download_buffer_max(), DEFAULT_DOWNLOAD_BUFFER);
+        // Node::new uses Bandwidth::default() (MAX), not the netsim defaults.
+        assert_eq!(node.upload_bandwidth(), &Bandwidth::default());
+        assert_eq!(node.download_bandwidth(), &Bandwidth::default());
+    }
+
+    #[test]
+    fn set_upload_bandwidth() {
+        let mut node = Node::new(NodeId::ZERO);
+        let bw = Bandwidth::new(1_000_000);
+
+        node.set_upload_bandwidth(bw.clone());
+
+        assert_eq!(node.upload_bandwidth(), &bw);
+    }
+
+    #[test]
+    fn set_download_bandwidth() {
+        let mut node = Node::new(NodeId::ZERO);
+        let bw = Bandwidth::new(2_000_000);
+
+        node.set_download_bandwidth(bw.clone());
+
+        assert_eq!(node.download_bandwidth(), &bw);
+    }
+
+    #[test]
+    fn set_upload_buffer() {
+        let mut node = Node::new(NodeId::ZERO);
+
+        node.set_upload_buffer(1024);
+
+        assert_eq!(node.upload_buffer_max(), 1024);
+    }
+
+    #[test]
+    fn set_download_buffer() {
+        let mut node = Node::new(NodeId::ZERO);
+
+        node.set_download_buffer(2048);
+
+        assert_eq!(node.download_buffer_max(), 2048);
+    }
+}

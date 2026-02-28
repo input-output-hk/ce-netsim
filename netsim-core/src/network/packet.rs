@@ -427,9 +427,11 @@ mod tests {
 
     #[test]
     fn packet_manual_drop() {
-        static mut COUNTER: u8 = 0;
+        use std::sync::atomic::{AtomicU8, Ordering};
+
+        static COUNTER: AtomicU8 = AtomicU8::new(0);
         extern "C" fn on_drop(value: u8) {
-            unsafe { COUNTER = value }
+            COUNTER.store(value, Ordering::Relaxed);
         }
 
         let packet = Packet::builder(&PacketIdGenerator::new())
@@ -442,8 +444,7 @@ mod tests {
 
         std::mem::drop(packet);
 
-        let counter = unsafe { COUNTER };
-        assert_eq!(counter, 1);
+        assert_eq!(COUNTER.load(Ordering::Relaxed), 1);
     }
 
     #[test]

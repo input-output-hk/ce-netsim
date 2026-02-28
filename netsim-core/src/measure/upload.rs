@@ -213,6 +213,18 @@ mod tests {
     }
 
     #[test]
+    fn accessor_methods() {
+        let gauge = Arc::new(Gauge::with_capacity(2048));
+        let channel = Arc::new(CongestionChannel::new(BW));
+        let upload = Upload::new(gauge, channel);
+
+        assert_eq!(upload.buffer_max_size(), 2048);
+        assert_eq!(upload.buffer_size(), 0);
+        assert_eq!(upload.channel_bandwidth(), &BW);
+        assert_eq!(upload.channel_remaining_bandwidth(), 0);
+    }
+
+    #[test]
     fn drop_frees_only_remaining_in_buffer() {
         let gauge = Arc::new(Gauge::new());
         let channel = Arc::new(CongestionChannel::new(BW));

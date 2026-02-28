@@ -900,4 +900,130 @@ mod tests {
             "reverse packet not delivered"
         );
     }
+
+    // ------------------------------------------------------------------
+    // 9. Network accessors
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn network_default() {
+        let net = Network::<()>::default();
+        assert_eq!(net.round(), Round::ZERO);
+        assert_eq!(net.packets_in_transit(), 0);
+    }
+
+    #[test]
+    fn node_accessor() {
+        let mut net = Network::<()>::new();
+        let n1 = net.new_node().build();
+        let n2 = net.new_node().build();
+
+        assert_eq!(net.node(n1).unwrap().id(), n1);
+        assert_eq!(net.node(n2).unwrap().id(), n2);
+        assert!(net.node(NodeId::new(999)).is_none());
+    }
+
+    #[test]
+    fn nodes_iterator() {
+        let mut net = Network::<()>::new();
+        let n1 = net.new_node().build();
+        let n2 = net.new_node().build();
+
+        let ids: Vec<NodeId> = net.nodes().map(|n| n.id()).collect();
+        assert!(ids.contains(&n1));
+        assert!(ids.contains(&n2));
+        assert_eq!(ids.len(), 2);
+    }
+
+    #[test]
+    fn link_accessor() {
+        let mut net = Network::<()>::new();
+        let n1 = net.new_node().build();
+        let n2 = net.new_node().build();
+
+        net.configure_link(n1, n2)
+            .set_latency(Latency::new(Duration::from_millis(42)))
+            .apply();
+
+        let link_id = LinkId::new((n1, n2));
+        let link = net.link(link_id).unwrap();
+        assert_eq!(link.latency(), Latency::new(Duration::from_millis(42)));
+    }
+
+    #[test]
+    fn links_iterator() {
+        let mut net = Network::<()>::new();
+        let n1 = net.new_node().build();
+        let n2 = net.new_node().build();
+        let n3 = net.new_node().build();
+
+        net.configure_link(n1, n2).apply();
+        net.configure_link(n2, n3).apply();
+
+        let links: Vec<_> = net.links().collect();
+        assert_eq!(links.len(), 2);
+    }
+
+    #[test]
+    fn packets_in_transit() {
+        let (mut net, n1, n2) = two_node_network();
+
+        assert_eq!(net.packets_in_transit(), 0);
+
+        send_msg(&mut net, n1, n2, "a");
+        send_msg(&mut net, n1, n2, "b");
+
+        assert_eq!(net.packets_in_transit(), 2);
+
+        net.advance_with(Duration::from_millis(1), |_| {});
+
+        assert_eq!(net.packets_in_transit(), 0);
+    }
+
+    #[test]
+    fn round_advances() {
+        let (mut net, _n1, _n2) = two_node_network();
+
+        assert_eq!(net.round(), Round::ZERO);
+
+        net.advance_with(Duration::from_millis(1), |_| {});
+        assert_eq!(net.round(), Round::ZERO.next());
+
+        net.advance_with(Duration::from_millis(1), |_| {});
+        assert_eq!(net.round(), Round::ZERO.next().next());
+    }
+
+    #[test]
+    fn set_seed_produces_deterministic_packet_loss() {
+        // Run the same scenario with the same seed twice and verify identical outcomes.
+        let run = |seed| {
+            let mut net: Network<&str> = Network::new();
+            net.set_seed(seed);
+            let n1 = net.new_node().build();
+            let n2 = net.new_node().build();
+            net.configure_link(n1, n2)
+                .set_latency(Latency::ZERO)
+                .set_packet_loss(PacketLoss::rate(0.5).unwrap())
+                .apply();
+
+            let mut delivered = 0u32;
+            for i in 0..100 {
+                let msg: &str = if i % 2 == 0 { "even" } else { "odd" };
+                send_msg(&mut net, n1, n2, msg);
+                net.advance_with(Duration::from_millis(1), |_| delivered += 1);
+            }
+            delivered
+        };
+
+        assert_eq!(run(42), run(42));
+    }
+
+    #[test]
+    fn set_download_bandwidth_via_builder() {
+        let mut net = Network::<()>::new();
+        let bw: Bandwidth = Bandwidth::new(1_000_000);
+        let n1 = net.new_node().set_download_bandwidth(bw.clone()).build();
+
+        assert_eq!(net.node(n1).unwrap().download_bandwidth(), &bw);
+    }
 }
