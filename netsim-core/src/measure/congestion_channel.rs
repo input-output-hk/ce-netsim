@@ -104,6 +104,10 @@ impl CongestionChannel {
             );
 
             self.gauge.set_maximum_capacity(capacity);
+            // Reset used capacity to zero for the new round. `free(u64::MAX)`
+            // is clamped internally to the actual used amount, so this is
+            // equivalent to "free everything" — giving the full `capacity`
+            // budget to the upcoming time step.
             self.gauge.free(u64::MAX);
         }
 

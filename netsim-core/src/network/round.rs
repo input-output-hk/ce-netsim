@@ -35,13 +35,17 @@ impl Round {
     /// assert!(prev < next);
     /// ```
     ///
-    /// # consideration
+    /// # Wrap-around
     ///
-    /// Internally this goes up to `u64::MAX` round. However if we reach
-    /// the maximum capacity the next round will be [`Round::ZERO`] as we
-    /// are wrapping around
+    /// After `u64::MAX` advances the counter wraps to [`Round::ZERO`].
+    /// This is not reachable in practice — at one advance per nanosecond
+    /// it would take ~584 years — but if it did occur,
+    /// [`CongestionChannel::update_capacity`] would treat the wrapped
+    /// round as "not newer" and skip the capacity reset for one step.
+    /// No data is lost or corrupted; the channel simply keeps the
+    /// previous step's remaining capacity for that single round.
     ///
-    ///
+    /// [`CongestionChannel::update_capacity`]: crate::measure::CongestionChannel::update_capacity
     #[inline(always)]
     pub fn next(self) -> Self {
         Self(self.0.wrapping_add(1))

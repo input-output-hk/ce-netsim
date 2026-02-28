@@ -147,14 +147,20 @@ impl PacketIdGenerator {
     ///
     /// IDs are assigned sequentially with `SeqCst` ordering so that clones of
     /// the same generator never produce duplicates, even across threads.
+    ///
+    /// # Overflow
+    ///
+    /// After `u64::MAX` IDs the internal counter wraps to `0`, which is
+    /// detected by a `debug_assert!` (panics in debug builds, silent in
+    /// release). This is not a practical concern — at 1 billion packets
+    /// per second it would take ~584 years to exhaust the space.
     pub fn generate(&self) -> PacketId {
         let id = self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
         debug_assert!(
             id != 0,
-            "The only case this can be equal to 0 is if the generator overflowed. If this \
-            happens it means we have generated `u64::MAX` unique paquet identifier and we \
-            wrapped around on overflow. This shouldn't happen!"
+            "PacketIdGenerator overflowed: u64::MAX packet IDs have been generated and the \
+            counter wrapped to 0. This should never happen in practice."
         );
 
         PacketId(id)
