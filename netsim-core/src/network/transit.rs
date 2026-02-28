@@ -106,9 +106,9 @@ mod tests {
 
     #[test]
     fn simple_case() {
-        let sender: Node<[u8; 1042]> = Node::new(NodeId::ZERO);
+        let sender: Node = Node::new(NodeId::ZERO);
         let link = Link::new(Latency::ZERO, BD, PacketLoss::default());
-        let recipient: Node<[u8; 1042]> = Node::new(NodeId::ONE);
+        let recipient: Node = Node::new(NodeId::ONE);
         let data = Packet::builder(&PacketIdGenerator::new())
             .from(sender.id())
             .to(recipient.id())

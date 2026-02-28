@@ -40,7 +40,7 @@ pub use self::{
 pub struct Network<T> {
     packet_id_generator: PacketIdGenerator,
 
-    nodes: HashMap<NodeId, Node<T>>,
+    nodes: HashMap<NodeId, Node>,
 
     links: HashMap<LinkId, Link>,
 
@@ -94,7 +94,7 @@ pub struct Network<T> {
 ///     .build();
 /// ```
 pub struct NodeBuilder<'a, T> {
-    node: Node<T>,
+    node: Node,
 
     network: &'a mut Network<T>,
 }

@@ -13,7 +13,7 @@ pub struct Route {
 }
 
 impl Route {
-    pub(super) fn new<T>(from: &Node<T>, link: &Link, to: &Node<T>) -> Self {
+    pub(super) fn new(from: &Node, link: &Link, to: &Node) -> Self {
         let direction = if from.id() < to.id() {
             LinkDirection::Forward
         } else {
@@ -53,9 +53,9 @@ mod tests {
 
     #[test]
     fn new() {
-        let sender: Node<()> = Node::new(NodeId::ZERO);
+        let sender = Node::new(NodeId::ZERO);
         let link = Link::new(Latency::ZERO, Bandwidth::MAX, PacketLoss::default());
-        let recipient: Node<()> = Node::new(NodeId::ONE);
+        let recipient = Node::new(NodeId::ONE);
 
         let _route = Route::new(&sender, &link, &recipient);
     }

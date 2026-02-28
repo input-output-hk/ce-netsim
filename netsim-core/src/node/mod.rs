@@ -1,13 +1,11 @@
 mod id;
 
+pub use self::id::NodeId;
 use crate::{
     defaults::{DEFAULT_DOWNLOAD_BUFFER, DEFAULT_UPLOAD_BUFFER},
     measure::{Bandwidth, CongestionChannel, Download, Gauge, Upload},
-    network::Packet,
 };
-use std::{collections::LinkedList, sync::Arc};
-
-pub use self::id::NodeId;
+use std::sync::Arc;
 
 /// A simulated network endpoint managed by the [`Network`].
 ///
@@ -41,7 +39,7 @@ pub use self::id::NodeId;
 /// [`NodeBuilder`]: crate::network::NodeBuilder
 /// [`Network::send`]: crate::network::Network::send
 /// [`SendError::SenderBufferFull`]: crate::network::SendError::SenderBufferFull
-pub struct Node<T> {
+pub struct Node {
     id: NodeId,
 
     /// the outbound buffer
@@ -54,11 +52,9 @@ pub struct Node<T> {
 
     inbound_channel: Arc<CongestionChannel>,
     inbound_buffer: Arc<Gauge>,
-
-    inbounds: LinkedList<Packet<T>>,
 }
 
-impl<T> Node<T> {
+impl Node {
     pub fn new(id: NodeId) -> Self {
         Self {
             id,
@@ -66,7 +62,6 @@ impl<T> Node<T> {
             outbound_channel: Arc::new(CongestionChannel::new(Bandwidth::default())),
             inbound_channel: Arc::new(CongestionChannel::new(Bandwidth::default())),
             inbound_buffer: Arc::new(Gauge::with_capacity(DEFAULT_DOWNLOAD_BUFFER)),
-            inbounds: LinkedList::new(),
         }
     }
 
@@ -140,21 +135,5 @@ impl<T> Node<T> {
             Arc::clone(&self.inbound_channel),
             Arc::clone(&self.inbound_buffer),
         )
-    }
-
-    /// Push a packet onto this node's inbound queue.
-    ///
-    /// Called by the [`Network`] when a packet completes its link transit.
-    ///
-    /// [`Network`]: crate::network::Network
-    pub fn push_pending(&mut self, packet: Packet<T>) {
-        self.inbounds.push_back(packet);
-    }
-
-    /// Pop the oldest pending inbound packet, if any.
-    ///
-    /// Returns `None` when the inbound queue is empty.
-    pub fn pop_pending(&mut self) -> Option<Packet<T>> {
-        self.inbounds.pop_front()
     }
 }
