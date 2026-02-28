@@ -289,9 +289,19 @@ impl<T> Packet<T> {
     /// Calling this prevents the `on_drop` callback (if any) from being
     /// invoked, because ownership of the data has been transferred to the
     /// caller.
+    ///
+    /// # Why this cannot panic
+    ///
+    /// `data` is always `Some` after construction. The only code that
+    /// sets it to `None` is [`take_inner`](Self::take_inner), which is
+    /// called in two places: here and in [`Drop::drop`]. Because
+    /// `into_inner` takes `self` **by value**, `Drop` cannot have run
+    /// yet — so `data` is guaranteed to still be `Some`.
     pub fn into_inner(mut self) -> T {
-        self.take_inner()
-            .expect("We should always have the data available")
+        let Some(data) = self.take_inner() else {
+            panic!("Packet::into_inner() called but data was already taken — this is a bug in Packet")
+        };
+        data
     }
 }
 
