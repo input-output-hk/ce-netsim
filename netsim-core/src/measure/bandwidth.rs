@@ -91,11 +91,20 @@ impl Bandwidth {
     /// # assert_eq!(capacity, 2_000_000);
     /// ```
     pub fn capacity(&self, elapsed: Duration) -> u64 {
-        let bps = self.0.load(Ordering::Relaxed) as u128;
-        let us = elapsed.as_micros();
-        // bytes = bits_per_s × µs / (8 bits/byte × 1_000_000 µs/s)
-        let bits = bps.saturating_mul(us);
-        (bits / 8_000_000).min(u64::MAX as u128) as u64
+        let bps = self.0.load(Ordering::Relaxed);
+        let us = elapsed.as_micros() as u64;
+        // bytes = bps × µs / 8_000_000
+        //
+        // Split into quotient and remainder to stay in u64 arithmetic
+        // and avoid a u128 division (which compiles to a slow __udivti3
+        // software call on x86-64).
+        //
+        // remainder < 8_000_000, so remainder × us fits u64 for steps
+        // up to ~26.7 days — well beyond any practical simulation step.
+        let q = bps / 8_000_000;
+        let r = bps % 8_000_000;
+        q.saturating_mul(us)
+            .saturating_add(r.saturating_mul(us) / 8_000_000)
     }
 
     /// Returns the raw bits-per-second value.
