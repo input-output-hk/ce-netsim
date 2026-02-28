@@ -506,6 +506,10 @@ where
     /// ```
     ///
     /// [`Bandwidth::minimum_step_duration`]: crate::measure::Bandwidth::minimum_step_duration
+    //
+    // note: this function is O(n + l) (number of nodes + links). Would could be
+    // faster by storing the maximum every time [self::configure_link] is used
+    // (though we may not be affected by updates of the bandwidth on the nodes or link)
     pub fn minimum_step_duration(&self) -> Duration {
         let node_mins = self.nodes.values().flat_map(|node| {
             [
