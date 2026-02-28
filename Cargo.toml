@@ -3,6 +3,9 @@ members = [
     "netsim-core",
     "netsim",
 ]
+exclude = [
+    "netsim-demo",
+]
 resolver = "3"
 
 [workspace.dependencies]
