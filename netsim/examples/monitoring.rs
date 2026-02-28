@@ -39,7 +39,7 @@ fn main() -> Result<()> {
         .configure_link(n1.id(), n3.id())
         .set_latency(Latency::new(Duration::from_millis(50)))
         .set_bandwidth("512kbps".parse()?)
-        .set_packet_loss(PacketLoss::Rate(0.05))
+        .set_packet_loss(PacketLoss::rate(0.05)?)
         .apply()?;
 
     // Send packets in the background

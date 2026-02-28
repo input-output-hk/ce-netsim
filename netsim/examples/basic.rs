@@ -40,7 +40,7 @@ fn main() -> Result<()> {
         .configure_link(alice.id(), bob.id())
         .set_latency(Latency::new(Duration::from_millis(20)))
         .set_bandwidth("50mbps".parse()?)
-        .set_packet_loss(PacketLoss::Rate(0.01))
+        .set_packet_loss(PacketLoss::rate(0.01)?)
         .apply()?;
 
     println!("Alice (id={}) -> Bob (id={})", alice.id(), bob.id());

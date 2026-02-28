@@ -299,7 +299,9 @@ impl<T> Packet<T> {
     /// yet — so `data` is guaranteed to still be `Some`.
     pub fn into_inner(mut self) -> T {
         let Some(data) = self.take_inner() else {
-            panic!("Packet::into_inner() called but data was already taken — this is a bug in Packet")
+            panic!(
+                "Packet::into_inner() called but data was already taken — this is a bug in Packet"
+            )
         };
         data
     }

@@ -223,7 +223,9 @@ use std::time::Duration;
 
 pub use self::{
     link::LinkId,
-    measure::{Bandwidth, Latency, PacketLoss},
+    measure::{
+        Bandwidth, Latency, PacketLoss, PacketLossParseError, PacketLossRate, PacketLossRateError,
+    },
     network::{LinkBuilder, Network, Packet, PacketBuilder, PacketId, RouteError, SendError},
     node::NodeId,
     stats::{LinkStats, NetworkStats, NodeStats},

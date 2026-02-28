@@ -95,7 +95,7 @@ use std::time::Duration;
 sim.configure_link(a.id(), b.id())
     .set_latency(Latency::new(Duration::from_millis(20)))
     .set_bandwidth("1gbps".parse()?)
-    .set_packet_loss(PacketLoss::Rate(0.01))
+    .set_packet_loss(PacketLoss::rate(0.01).unwrap())
     .apply()?;
 # Ok(()) }
 ```

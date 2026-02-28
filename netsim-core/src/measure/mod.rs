@@ -7,6 +7,11 @@ mod packet_loss;
 mod upload;
 
 pub use self::{
-    bandwidth::Bandwidth, congestion_channel::CongestionChannel, download::Download, gauge::Gauge,
-    latency::Latency, packet_loss::PacketLoss, upload::Upload,
+    bandwidth::Bandwidth,
+    congestion_channel::CongestionChannel,
+    download::Download,
+    gauge::Gauge,
+    latency::Latency,
+    packet_loss::{PacketLoss, PacketLossParseError, PacketLossRate, PacketLossRateError},
+    upload::Upload,
 };

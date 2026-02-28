@@ -693,7 +693,7 @@ mod tests {
         let n1 = net.new_node().build();
         let n2 = net.new_node().build();
         net.configure_link(n1, n2)
-            .set_packet_loss(PacketLoss::Rate(1.0))
+            .set_packet_loss(PacketLoss::rate(1.0).unwrap())
             .apply();
 
         // send() returns Ok — the packet is silently dropped.
