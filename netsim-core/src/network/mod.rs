@@ -565,3 +565,355 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::measure::{Latency, PacketLoss};
+
+    /// Helper: create a 2-node network with a zero-latency link and return (network, n1, n2).
+    fn two_node_network() -> (Network<&'static str>, NodeId, NodeId) {
+        let mut net = Network::new();
+        let n1 = net.new_node().build();
+        let n2 = net.new_node().build();
+        net.configure_link(n1, n2)
+            .set_latency(Latency::ZERO)
+            .apply();
+        (net, n1, n2)
+    }
+
+    fn send_msg(
+        net: &mut Network<&'static str>,
+        from: NodeId,
+        to: NodeId,
+        msg: &'static str,
+    ) -> PacketId {
+        let pkt = Packet::builder(net.packet_id_generator())
+            .from(from)
+            .to(to)
+            .data(msg)
+            .build()
+            .unwrap();
+        let id = pkt.id();
+        net.send(pkt).unwrap();
+        id
+    }
+
+    // ------------------------------------------------------------------
+    // 1. Basic send + deliver
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn basic_send_and_deliver() {
+        let (mut net, n1, n2) = two_node_network();
+        let id = send_msg(&mut net, n1, n2, "hello");
+
+        let mut delivered = Vec::new();
+        // Default bandwidth is MAX, so a small packet arrives in one step.
+        net.advance_with(Duration::from_millis(1), |pkt| delivered.push(pkt));
+
+        assert_eq!(delivered.len(), 1);
+        assert_eq!(delivered[0].id(), id);
+        assert_eq!(delivered[0].from(), n1);
+        assert_eq!(delivered[0].to(), n2);
+    }
+
+    #[test]
+    fn delivered_payload_matches() {
+        let (mut net, n1, n2) = two_node_network();
+        send_msg(&mut net, n1, n2, "payload");
+
+        let mut msg = None;
+        net.advance_with(Duration::from_millis(1), |pkt| msg = Some(pkt.into_inner()));
+        assert_eq!(msg, Some("payload"));
+    }
+
+    // ------------------------------------------------------------------
+    // 2. Latency
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn packet_respects_latency() {
+        let mut net: Network<&str> = Network::new();
+        let n1 = net.new_node().build();
+        let n2 = net.new_node().build();
+        net.configure_link(n1, n2)
+            .set_latency(Latency::new(Duration::from_millis(100)))
+            .apply();
+
+        send_msg(&mut net, n1, n2, "hi");
+
+        // Advance 50ms — packet should NOT arrive yet.
+        let mut arrived = false;
+        net.advance_with(Duration::from_millis(50), |_| arrived = true);
+        assert!(!arrived, "packet arrived before latency elapsed");
+
+        // Advance another 60ms (total 110ms > 100ms latency) — should arrive.
+        net.advance_with(Duration::from_millis(60), |_| arrived = true);
+        assert!(arrived, "packet did not arrive after latency elapsed");
+    }
+
+    // ------------------------------------------------------------------
+    // 3. Bandwidth saturation
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn bandwidth_limits_delivery_time() {
+        let mut net: Network<[u8; 1000]> = Network::new();
+        let n1 = net
+            .new_node()
+            .set_upload_bandwidth(Bandwidth::new(8_000_000)) // 8 Mbps = 1 byte/µs
+            .build();
+        let n2 = net.new_node().build();
+        net.configure_link(n1, n2)
+            .set_latency(Latency::ZERO)
+            .set_bandwidth(Bandwidth::new(8_000_000))
+            .apply();
+
+        let pkt = Packet::builder(net.packet_id_generator())
+            .from(n1)
+            .to(n2)
+            .data([0u8; 1000])
+            .build()
+            .unwrap();
+        net.send(pkt).unwrap();
+
+        // At 1 byte/µs, 1000 bytes needs 1000µs through upload and again
+        // through the link. With 500µs steps, the first step can only push
+        // 500 bytes through upload — packet should NOT be done yet.
+        let mut count = 0u32;
+        net.advance_with(Duration::from_micros(500), |_| count += 1);
+        assert_eq!(count, 0, "packet arrived too early");
+
+        // Keep advancing in 500µs steps until delivered.
+        for _ in 0..1 {
+            net.advance_with(Duration::from_micros(500), |_| count += 1);
+            if count > 0 {
+                break;
+            }
+        }
+        assert_eq!(count, 1, "packet should eventually be delivered");
+    }
+
+    // ------------------------------------------------------------------
+    // 4. Packet loss
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn full_packet_loss_drops_silently() {
+        let mut net: Network<&str> = Network::new();
+        let n1 = net.new_node().build();
+        let n2 = net.new_node().build();
+        net.configure_link(n1, n2)
+            .set_packet_loss(PacketLoss::Rate(1.0))
+            .apply();
+
+        // send() returns Ok — the packet is silently dropped.
+        let pkt = Packet::builder(net.packet_id_generator())
+            .from(n1)
+            .to(n2)
+            .data("dropped")
+            .build()
+            .unwrap();
+        assert!(net.send(pkt).is_ok());
+
+        // Advance generously — nothing should arrive.
+        let mut delivered = 0u32;
+        for _ in 0..10 {
+            net.advance_with(Duration::from_millis(10), |_| delivered += 1);
+        }
+        assert_eq!(delivered, 0);
+    }
+
+    #[test]
+    fn no_packet_loss_delivers() {
+        let mut net: Network<&str> = Network::new();
+        let n1 = net.new_node().build();
+        let n2 = net.new_node().build();
+        net.configure_link(n1, n2)
+            .set_latency(Latency::ZERO)
+            .set_packet_loss(PacketLoss::None)
+            .apply();
+
+        send_msg(&mut net, n1, n2, "safe");
+
+        let mut delivered = 0u32;
+        net.advance_with(Duration::from_millis(1), |_| delivered += 1);
+        assert_eq!(delivered, 1);
+    }
+
+    // ------------------------------------------------------------------
+    // 5. Send errors
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn send_to_unknown_sender() {
+        let mut net: Network<&str> = Network::new();
+        let n1 = net.new_node().build();
+        let n2 = net.new_node().build();
+        net.configure_link(n1, n2).apply();
+
+        let fake_sender = NodeId::new(999);
+        let pkt = Packet::builder(net.packet_id_generator())
+            .from(fake_sender)
+            .to(n2)
+            .data("x")
+            .build()
+            .unwrap();
+        let err = net.send(pkt).unwrap_err();
+        assert!(
+            matches!(err, SendError::Route(RouteError::SenderNotFound { .. })),
+            "expected SenderNotFound, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn send_to_unknown_recipient() {
+        let mut net: Network<&str> = Network::new();
+        let n1 = net.new_node().build();
+        let _n2 = net.new_node().build();
+
+        let fake_recipient = NodeId::new(999);
+        let pkt = Packet::builder(net.packet_id_generator())
+            .from(n1)
+            .to(fake_recipient)
+            .data("x")
+            .build()
+            .unwrap();
+        let err = net.send(pkt).unwrap_err();
+        assert!(
+            matches!(err, SendError::Route(RouteError::RecipientNotFound { .. })),
+            "expected RecipientNotFound, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn send_without_link() {
+        let mut net: Network<&str> = Network::new();
+        let n1 = net.new_node().build();
+        let n2 = net.new_node().build();
+        // No configure_link call.
+
+        let pkt = Packet::builder(net.packet_id_generator())
+            .from(n1)
+            .to(n2)
+            .data("x")
+            .build()
+            .unwrap();
+        let err = net.send(pkt).unwrap_err();
+        assert!(
+            matches!(err, SendError::Route(RouteError::LinkNotFound { .. })),
+            "expected LinkNotFound, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn send_buffer_full() {
+        let mut net: Network<[u8; 100]> = Network::new();
+        let n1 = net
+            .new_node()
+            .set_upload_buffer(50) // smaller than the packet
+            .build();
+        let n2 = net.new_node().build();
+        net.configure_link(n1, n2).apply();
+
+        let pkt = Packet::builder(net.packet_id_generator())
+            .from(n1)
+            .to(n2)
+            .data([0u8; 100]) // 100 bytes > 50 byte buffer
+            .build()
+            .unwrap();
+        let err = net.send(pkt).unwrap_err();
+        assert!(
+            matches!(err, SendError::SenderBufferFull { .. }),
+            "expected SenderBufferFull, got {err:?}"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // 6. Corruption detection (download buffer too small)
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn corruption_when_download_buffer_too_small() {
+        let mut net: Network<[u8; 200]> = Network::new();
+        let n1 = net.new_node().build();
+        let n2 = net
+            .new_node()
+            .set_download_buffer(50) // smaller than the packet
+            .build();
+        net.configure_link(n1, n2).apply();
+
+        let pkt = Packet::builder(net.packet_id_generator())
+            .from(n1)
+            .to(n2)
+            .data([0u8; 200])
+            .build()
+            .unwrap();
+        net.send(pkt).unwrap();
+
+        // The corrupted transit should be removed but the packet should NOT
+        // be delivered (transit.complete() returns Err for corrupted packets).
+        let mut delivered = 0u32;
+        for _ in 0..100 {
+            net.advance_with(Duration::from_millis(1), |_| delivered += 1);
+        }
+        assert_eq!(delivered, 0, "corrupted packet should not be delivered");
+    }
+
+    // ------------------------------------------------------------------
+    // 7. Multiple packets in flight
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn multiple_packets_in_flight() {
+        let (mut net, n1, n2) = two_node_network();
+
+        let id1 = send_msg(&mut net, n1, n2, "first");
+        let id2 = send_msg(&mut net, n1, n2, "second");
+        let id3 = send_msg(&mut net, n1, n2, "third");
+
+        let mut ids = Vec::new();
+        for _ in 0..10 {
+            net.advance_with(Duration::from_millis(1), |pkt| ids.push(pkt.id()));
+        }
+
+        assert!(ids.contains(&id1), "first packet not delivered");
+        assert!(ids.contains(&id2), "second packet not delivered");
+        assert!(ids.contains(&id3), "third packet not delivered");
+        assert_eq!(ids.len(), 3);
+    }
+
+    // ------------------------------------------------------------------
+    // 8. Bidirectional traffic
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn bidirectional_traffic() {
+        let (mut net, n1, n2) = two_node_network();
+
+        let id_fwd = send_msg(&mut net, n1, n2, "forward");
+        let id_rev = send_msg(&mut net, n2, n1, "reverse");
+
+        let mut delivered = Vec::new();
+        for _ in 0..10 {
+            net.advance_with(Duration::from_millis(1), |pkt| {
+                delivered.push((pkt.id(), pkt.from(), pkt.to()));
+            });
+        }
+
+        assert_eq!(delivered.len(), 2);
+        assert!(
+            delivered
+                .iter()
+                .any(|(id, from, to)| *id == id_fwd && *from == n1 && *to == n2),
+            "forward packet not delivered"
+        );
+        assert!(
+            delivered
+                .iter()
+                .any(|(id, from, to)| *id == id_rev && *from == n2 && *to == n1),
+            "reverse packet not delivered"
+        );
+    }
+}
