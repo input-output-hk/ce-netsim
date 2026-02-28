@@ -10,6 +10,12 @@ struct Entry<T> {
     value: Option<T>,
 }
 
+pub struct Iter<'a, T> {
+    current: *const Entry<T>,
+    tail: *const Entry<T>,
+    _marker: std::marker::PhantomData<&'a LinkedList<T>>,
+}
+
 pub struct CursorMut<'a, T> {
     entry: *mut Entry<T>,
     _marker: std::marker::PhantomData<&'a mut LinkedList<T>>,
@@ -97,6 +103,14 @@ impl<T> LinkedList<T> {
         entry_ptr.value.take()
     }
 
+    pub fn iter(&self) -> Iter<'_, T> {
+        Iter {
+            current: unsafe { (*self.head).next },
+            tail: self.tail,
+            _marker: std::marker::PhantomData,
+        }
+    }
+
     pub fn cursor_mut(&mut self) -> CursorMut<'_, T> {
         CursorMut {
             entry: unsafe { (*self.head).next },
@@ -125,6 +139,19 @@ impl<T> LinkedList<T> {
             (*self.head).next = entry;
             (*(*entry).next).prev = entry;
         }
+    }
+}
+
+impl<'a, T> Iterator for Iter<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current.is_null() || std::ptr::addr_eq(self.current, self.tail) {
+            return None;
+        }
+        let entry = unsafe { &*self.current };
+        self.current = entry.next;
+        entry.value.as_ref()
     }
 }
 
@@ -262,6 +289,25 @@ mod tests {
         assert!(cursor.remove_entry().is_some());
         assert!(cursor.remove_entry().is_some());
         assert!(cursor.as_ref().is_none());
+    }
+
+    #[test]
+    fn iter() {
+        let mut ll: LinkedList<u8> = LinkedList::new();
+        // push adds to the front, so push order 1, 2, 3 → head-to-tail: 3, 2, 1
+        ll.push(1);
+        ll.push(2);
+        ll.push(3);
+
+        let values: Vec<&u8> = ll.iter().collect();
+        assert_eq!(values, vec![&3, &2, &1]);
+    }
+
+    #[test]
+    fn iter_empty() {
+        let ll: LinkedList<u8> = LinkedList::new();
+        let values: Vec<&u8> = ll.iter().collect();
+        assert!(values.is_empty());
     }
 
     #[test]

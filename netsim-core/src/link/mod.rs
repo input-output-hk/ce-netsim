@@ -164,6 +164,28 @@ impl Link {
     pub fn reverse_bandwidth(&self) -> &Bandwidth {
         self.channel_reverse.bandwidth()
     }
+
+    /// Returns remaining forward-direction channel capacity for the current
+    /// round (bytes).
+    pub fn forward_channel_remaining(&self) -> u64 {
+        self.channel_forward.capacity()
+    }
+
+    /// Returns how many bytes of the forward channel budget were consumed this round.
+    pub fn forward_channel_used(&self) -> u64 {
+        self.channel_forward.used()
+    }
+
+    /// Returns remaining reverse-direction channel capacity for the current
+    /// round (bytes).
+    pub fn reverse_channel_remaining(&self) -> u64 {
+        self.channel_reverse.capacity()
+    }
+
+    /// Returns how many bytes of the reverse channel budget were consumed this round.
+    pub fn reverse_channel_used(&self) -> u64 {
+        self.channel_reverse.used()
+    }
 }
 
 impl LinkChannel {
@@ -360,6 +382,37 @@ mod tests {
             transited_rev, 0,
             "shared channel: reverse is starved after forward saturates"
         );
+    }
+
+    #[test]
+    fn channel_remaining_starts_at_zero() {
+        let link = Link::new(Latency::ZERO, BW, PacketLoss::default());
+
+        assert_eq!(link.forward_channel_remaining(), 0);
+        assert_eq!(link.reverse_channel_remaining(), 0);
+    }
+
+    #[test]
+    fn channel_remaining_reflects_usage() {
+        let link = Link::new(Latency::ZERO, BW, PacketLoss::default());
+        let round = Round::ZERO.next();
+
+        // Update capacity for this round: 8 Mbps × 1s = 1_000_000 bytes
+        let mut fwd = link.channel(LinkDirection::Forward);
+        fwd.update_capacity(round, Duration::from_secs(1));
+
+        // Before any processing, full capacity is remaining.
+        assert_eq!(link.forward_channel_remaining(), 1_000_000);
+
+        // Consume 400_000 bytes through the forward channel.
+        let transited = fwd.process(400_000);
+        assert_eq!(transited, 400_000);
+
+        // Remaining should reflect consumption.
+        assert_eq!(link.forward_channel_remaining(), 600_000);
+
+        // Reverse is unaffected (full-duplex).
+        assert_eq!(link.reverse_channel_remaining(), 0);
     }
 
     /// Helper: create a LinkChannel directly from latency + bandwidth.

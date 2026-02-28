@@ -226,8 +226,8 @@ pub use self::{
         PacketLossRateError,
     },
     network::{
-        LinkBuilder, Network, Packet, PacketBuildError, PacketBuilder, PacketId, PacketIdGenerator,
-        RouteError, SendError,
+        LinkBuilder, Network, NodeConfigBuilder, Packet, PacketBuildError, PacketBuilder, PacketId,
+        PacketIdGenerator, RouteError, SendError,
     },
     node::{Node, NodeId},
     time::DurationParseError,
@@ -261,6 +261,87 @@ fn minimum_step_duration_reflects_most_constrained_channel() {
         network.minimum_step_duration(),
         Duration::from_micros(8_000),
     );
+}
+
+/// Reproduce the exact demo topology's Server→Client path and send a 1 MB
+/// packet.
+///
+/// Configuration (from netsim-demo `build_demo_topology`):
+///
+/// - **Server**: 1 Gbps UL/DL, 1 GB UL/DL buffers
+/// - **Client**: 50 Mbps UL, 200 Mbps DL, 10 MB UL buf, 100 MB DL buf
+/// - **Link**: 10 ms latency, 1 Gbps bandwidth, 0 % packet loss
+/// - **Step**: 1 ms
+/// - **Packet**: 1 MB (1_048_576 bytes)
+///
+/// **Current behaviour**: the link bandwidth (1 Gbps = 125 KB/ms) exceeds
+/// the client's download bandwidth (200 Mbps = 25 KB/ms). After the 10 ms
+/// latency expires the link pushes 125 KB but the download channel can only
+/// absorb 25 KB. `Download::process` marks `size != processed` as corruption
+/// (UDP semantics — bytes that can't be received are lost).
+///
+/// This test documents the current drop behaviour. Fixing it requires
+/// changing `Download::process` so that excess bytes are buffered rather
+/// than discarded when the channel is bandwidth-limited.
+#[test]
+fn server_to_client_1mb_packet_drops_due_to_bandwidth_mismatch() {
+    let mut net: Network<Vec<u8>> = Network::new();
+
+    // Server: 1 Gbps upload/download, 1 GB buffers
+    let server = net
+        .new_node()
+        .set_upload_bandwidth(Bandwidth::new(1_000_000_000))
+        .set_download_bandwidth(Bandwidth::new(1_000_000_000))
+        .set_upload_buffer(1_000_000_000)
+        .set_download_buffer(1_000_000_000)
+        .build();
+
+    // Client: 50 Mbps upload, 200 Mbps download, 10 MB / 100 MB buffers
+    let client = net
+        .new_node()
+        .set_upload_bandwidth(Bandwidth::new(50_000_000))
+        .set_download_bandwidth(Bandwidth::new(200_000_000))
+        .set_upload_buffer(10_000_000)
+        .set_download_buffer(100_000_000)
+        .build();
+
+    // Link: 10 ms latency, 1 Gbps, no packet loss
+    net.configure_link(server, client)
+        .set_latency(Latency::new(Duration::from_millis(10)))
+        .set_bandwidth(Bandwidth::new(1_000_000_000))
+        .apply();
+
+    // Send a 1 MB packet
+    let payload = vec![0u8; 1_048_576];
+    let packet = Packet::builder(net.packet_id_generator())
+        .from(server)
+        .to(client)
+        .data(payload)
+        .build()
+        .unwrap();
+    net.send(packet).unwrap();
+
+    // Advance in 1 ms steps (matching the demo's manual stepping).
+    let mut delivered = false;
+    let mut corrupted = false;
+    for _ in 0..1000 {
+        net.advance_with_report(
+            Duration::from_millis(1),
+            |_| delivered = true,
+            |_| corrupted = true,
+        );
+        if delivered || corrupted {
+            break;
+        }
+    }
+
+    // The packet is corrupted because the link pushes bytes faster than
+    // the download channel can absorb them.
+    assert!(
+        corrupted,
+        "packet should be corrupted due to bandwidth mismatch"
+    );
+    assert!(!delivered, "corrupted packet should not be delivered");
 }
 
 #[test]

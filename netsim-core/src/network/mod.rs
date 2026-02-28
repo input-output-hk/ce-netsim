@@ -152,6 +152,71 @@ impl<T> LinkBuilder<'_, T> {
     }
 }
 
+/// Builder for reconfiguring an existing node's bandwidth and buffer settings.
+///
+/// Obtained via [`Network::configure_node`]. Mutations are applied eagerly
+/// through each setter; [`apply`](NodeConfigBuilder::apply) is a no-op
+/// finaliser kept for API symmetry with [`LinkBuilder`].
+///
+/// # Example
+///
+/// ```
+/// use netsim_core::{network::Network, Bandwidth};
+///
+/// let mut network: Network<()> = Network::new();
+/// let n1 = network.new_node().build();
+///
+/// network
+///     .configure_node(n1)
+///     .set_upload_bandwidth(Bandwidth::new(10_000_000))
+///     .set_upload_buffer(1_024 * 1_024)
+///     .apply();
+/// ```
+pub struct NodeConfigBuilder<'a, T> {
+    id: NodeId,
+    network: &'a mut Network<T>,
+}
+
+impl<T> NodeConfigBuilder<'_, T> {
+    /// Set the upload bandwidth limit for this node.
+    pub fn set_upload_bandwidth(self, bandwidth: Bandwidth) -> Self {
+        if let Some(node) = self.network.nodes.get_mut(&self.id) {
+            node.set_upload_bandwidth(bandwidth);
+        }
+        self
+    }
+
+    /// Set the download bandwidth limit for this node.
+    pub fn set_download_bandwidth(self, bandwidth: Bandwidth) -> Self {
+        if let Some(node) = self.network.nodes.get_mut(&self.id) {
+            node.set_download_bandwidth(bandwidth);
+        }
+        self
+    }
+
+    /// Set the maximum upload buffer size in bytes.
+    pub fn set_upload_buffer(self, buffer_size: u64) -> Self {
+        if let Some(node) = self.network.nodes.get_mut(&self.id) {
+            node.set_upload_buffer(buffer_size);
+        }
+        self
+    }
+
+    /// Set the maximum download buffer size in bytes.
+    pub fn set_download_buffer(self, buffer_size: u64) -> Self {
+        if let Some(node) = self.network.nodes.get_mut(&self.id) {
+            node.set_download_buffer(buffer_size);
+        }
+        self
+    }
+
+    /// Finalise the configuration.
+    ///
+    /// Mutations have already been applied by each setter; this method
+    /// exists for API symmetry with [`LinkBuilder::apply`].
+    pub fn apply(self) {}
+}
+
 /// Error returned when a route between two nodes cannot be established.
 ///
 /// Nodes are not automatically connected when created — a link must be
@@ -364,6 +429,32 @@ where
         }
     }
 
+    /// Reconfigure an existing node's bandwidth and buffer settings.
+    ///
+    /// Returns a [`NodeConfigBuilder`] that allows updating upload/download
+    /// bandwidth and buffer sizes. Call [`.apply()`](NodeConfigBuilder::apply)
+    /// to finalise.
+    ///
+    /// If `id` does not exist in the network, setter calls are silently
+    /// ignored (the builder is still returned for ergonomics).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use netsim_core::{network::Network, Bandwidth};
+    /// let mut network: Network<()> = Network::new();
+    /// let n1 = network.new_node().build();
+    ///
+    /// network
+    ///     .configure_node(n1)
+    ///     .set_upload_bandwidth(Bandwidth::new(10_000_000))
+    ///     .set_download_buffer(1_024 * 1_024)
+    ///     .apply();
+    /// ```
+    pub fn configure_node(&mut self, id: NodeId) -> NodeConfigBuilder<'_, T> {
+        NodeConfigBuilder { id, network: self }
+    }
+
     /// Returns the route between two nodes, if one exists.
     ///
     /// A route requires both nodes to be present in the network **and** a
@@ -448,6 +539,11 @@ where
     }
 
     /// Number of packets currently in transit.
+    pub fn transits(&self) -> impl Iterator<Item = &Transit<T>> {
+        self.transit.iter()
+    }
+
+    /// Number of packets currently in transit.
     pub fn packets_in_transit(&self) -> usize {
         self.transit.len()
     }
@@ -521,9 +617,29 @@ where
     /// packets on that route will never be delivered. See
     /// [`Bandwidth`](crate::measure::Bandwidth) for the minimum bandwidth table
     /// by step size.
-    pub fn advance_with<H>(&mut self, duration: Duration, mut handle: H)
+    pub fn advance_with<H>(&mut self, duration: Duration, handle: H)
     where
         H: FnMut(Packet<T>),
+    {
+        self.advance_with_report(duration, handle, |_| {});
+    }
+
+    /// Like [`advance_with`](Self::advance_with), but also reports corrupted
+    /// (dropped) transits via a second callback.
+    ///
+    /// `on_deliver` is called for each packet that successfully completed
+    /// transit.  `on_corrupt` is called for each transit that was removed
+    /// because it became corrupted (e.g. the receiver's download buffer
+    /// overflowed).  The `&Transit<T>` reference is valid only for the
+    /// duration of the callback — the transit is freed immediately after.
+    pub fn advance_with_report<H, D>(
+        &mut self,
+        duration: Duration,
+        mut on_deliver: H,
+        mut on_corrupt: D,
+    ) where
+        H: FnMut(Packet<T>),
+        D: FnMut(Transit<T>),
     {
         self.round = self.round.next();
 
@@ -538,10 +654,11 @@ where
             let remove = transit.completed() || transit.corrupted();
 
             if remove {
-                if let Some(transit) = cursor.remove_entry()
-                    && let Ok(packet) = transit.complete()
-                {
-                    handle(packet)
+                if let Some(transit) = cursor.remove_entry() {
+                    match transit.complete() {
+                        Ok(packet) => on_deliver(packet),
+                        Err(transit) => on_corrupt(transit),
+                    }
                 }
             } else {
                 cursor.move_next();
@@ -1025,5 +1142,88 @@ mod tests {
         let n1 = net.new_node().set_download_bandwidth(bw.clone()).build();
 
         assert_eq!(net.node(n1).unwrap().download_bandwidth(), &bw);
+    }
+
+    // ------------------------------------------------------------------
+    // 11. configure_node
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn configure_node_upload_bandwidth() {
+        let mut net = Network::<()>::new();
+        let n1 = net.new_node().build();
+        let bw = Bandwidth::new(5_000_000);
+
+        net.configure_node(n1)
+            .set_upload_bandwidth(bw.clone())
+            .apply();
+
+        assert_eq!(net.node(n1).unwrap().upload_bandwidth(), &bw);
+    }
+
+    #[test]
+    fn configure_node_download_bandwidth() {
+        let mut net = Network::<()>::new();
+        let n1 = net.new_node().build();
+        let bw = Bandwidth::new(2_000_000);
+
+        net.configure_node(n1)
+            .set_download_bandwidth(bw.clone())
+            .apply();
+
+        assert_eq!(net.node(n1).unwrap().download_bandwidth(), &bw);
+    }
+
+    #[test]
+    fn configure_node_upload_buffer() {
+        let mut net = Network::<()>::new();
+        let n1 = net.new_node().build();
+
+        net.configure_node(n1).set_upload_buffer(4096).apply();
+
+        assert_eq!(net.node(n1).unwrap().upload_buffer_max(), 4096);
+    }
+
+    #[test]
+    fn configure_node_download_buffer() {
+        let mut net = Network::<()>::new();
+        let n1 = net.new_node().build();
+
+        net.configure_node(n1).set_download_buffer(8192).apply();
+
+        assert_eq!(net.node(n1).unwrap().download_buffer_max(), 8192);
+    }
+
+    #[test]
+    fn configure_node_all_properties() {
+        let mut net = Network::<()>::new();
+        let n1 = net.new_node().build();
+        let ul_bw = Bandwidth::new(10_000_000);
+        let dl_bw = Bandwidth::new(50_000_000);
+
+        net.configure_node(n1)
+            .set_upload_bandwidth(ul_bw.clone())
+            .set_download_bandwidth(dl_bw.clone())
+            .set_upload_buffer(1_000_000)
+            .set_download_buffer(2_000_000)
+            .apply();
+
+        let node = net.node(n1).unwrap();
+        assert_eq!(node.upload_bandwidth(), &ul_bw);
+        assert_eq!(node.download_bandwidth(), &dl_bw);
+        assert_eq!(node.upload_buffer_max(), 1_000_000);
+        assert_eq!(node.download_buffer_max(), 2_000_000);
+    }
+
+    #[test]
+    fn configure_node_unknown_id_is_no_op() {
+        let mut net = Network::<()>::new();
+        let _n1 = net.new_node().build();
+
+        // Should not panic — setters silently skip if node not found.
+        net.configure_node(NodeId::new(999))
+            .set_upload_bandwidth(Bandwidth::new(1_000))
+            .set_upload_buffer(100)
+            .apply();
     }
 }

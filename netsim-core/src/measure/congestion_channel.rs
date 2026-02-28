@@ -59,6 +59,12 @@ impl CongestionChannel {
         self.gauge.remaining_capacity()
     }
 
+    /// Returns how many bytes of this round's capacity have been consumed.
+    #[inline]
+    pub fn used(&self) -> u64 {
+        self.gauge.used_capacity()
+    }
+
     pub fn update_capacity(&self, round: Round, duration: Duration) -> bool {
         let new_round = round.into_u64();
         let mut old_round = self.round.load(Ordering::SeqCst);

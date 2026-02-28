@@ -1,8 +1,9 @@
-use super::{Packet, Round, SendError};
+use super::{Packet, PacketId, Round, SendError};
 use crate::{
     data::Data,
     link::LinkChannel,
     measure::{Download, Upload},
+    node::NodeId,
 };
 use std::time::Duration;
 
@@ -42,6 +43,41 @@ where
                 packet_size: data.bytes_size(),
             })
         }
+    }
+
+    /// Returns the unique identifier of the packet in transit.
+    pub fn packet_id(&self) -> PacketId {
+        self.data.id()
+    }
+
+    /// Returns the sender [`NodeId`].
+    pub fn from(&self) -> NodeId {
+        self.data.from()
+    }
+
+    /// Returns the recipient [`NodeId`].
+    pub fn to(&self) -> NodeId {
+        self.data.to()
+    }
+
+    /// Returns the total payload size in bytes.
+    pub fn bytes_size(&self) -> u64 {
+        self.data.bytes_size()
+    }
+
+    /// Bytes waiting in the sender's upload buffer for this transit.
+    pub fn upload_pending(&self) -> u64 {
+        self.upload.bytes_in_buffer()
+    }
+
+    /// Bytes currently in the link channel (latency + bandwidth pipeline).
+    pub fn link_pending(&self) -> u64 {
+        self.link.bytes_in_transit()
+    }
+
+    /// Bytes that have arrived in the receiver's download buffer.
+    pub fn download_pending(&self) -> u64 {
+        self.download.bytes_in_buffer()
     }
 
     pub fn advance(&mut self, round: Round, duration: Duration) {
@@ -224,6 +260,42 @@ mod tests {
             matches!(err, SendError::SenderBufferFull { .. }),
             "expected SenderBufferFull, got {err:?}"
         );
+    }
+
+    #[test]
+    fn accessors() {
+        let sender = Node::new(NodeId::ZERO);
+        let link = Link::new(Latency::ZERO, BD, PacketLoss::default());
+        let recipient = Node::new(NodeId::ONE);
+
+        let transit = make_transit(&sender, &link, &recipient, [0; 1_042]);
+
+        assert_eq!(transit.from(), NodeId::ZERO);
+        assert_eq!(transit.to(), NodeId::ONE);
+        assert_eq!(transit.bytes_size(), 1_042);
+
+        // All bytes start in the upload buffer.
+        assert_eq!(transit.upload_pending(), 1_042);
+        assert_eq!(transit.link_pending(), 0);
+        assert_eq!(transit.download_pending(), 0);
+    }
+
+    #[test]
+    fn accessors_mid_transit() {
+        let sender = Node::new(NodeId::ZERO);
+        let link = Link::new(Latency::ZERO, BD, PacketLoss::default());
+        let recipient = Node::new(NodeId::ONE);
+
+        let mut transit = make_transit(&sender, &link, &recipient, [0; 1_042]);
+        let round = Round::ZERO.next();
+        // 600 bytes capacity at 8 Mbps × 600µs
+        transit.advance(round, Duration::from_micros(600));
+
+        // Node bandwidth is MAX so all 1042 bytes upload instantly.
+        // Link at 8 Mbps × 600µs = 600 bytes capacity: 600 pass, 442 stuck.
+        assert_eq!(transit.upload_pending(), 0);
+        assert_eq!(transit.link_pending(), 442);
+        assert_eq!(transit.download_pending(), 600);
     }
 
     #[test]

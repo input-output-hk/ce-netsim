@@ -121,6 +121,36 @@ impl Node {
         self.inbound_channel.bandwidth()
     }
 
+    /// Returns remaining upload channel capacity for the current round (bytes).
+    ///
+    /// After [`Network::advance_with`], this reflects how much of the upload
+    /// bandwidth budget was **not** consumed this tick.
+    ///
+    /// [`Network::advance_with`]: crate::network::Network::advance_with
+    pub fn upload_channel_remaining(&self) -> u64 {
+        self.outbound_channel.capacity()
+    }
+
+    /// Returns how many bytes of the upload channel budget were consumed this round.
+    pub fn upload_channel_used(&self) -> u64 {
+        self.outbound_channel.used()
+    }
+
+    /// Returns remaining download channel capacity for the current round (bytes).
+    ///
+    /// After [`Network::advance_with`], this reflects how much of the download
+    /// bandwidth budget was **not** consumed this tick.
+    ///
+    /// [`Network::advance_with`]: crate::network::Network::advance_with
+    pub fn download_channel_remaining(&self) -> u64 {
+        self.inbound_channel.capacity()
+    }
+
+    /// Returns how many bytes of the download channel budget were consumed this round.
+    pub fn download_channel_used(&self) -> u64 {
+        self.inbound_channel.used()
+    }
+
     /// Returns an [`Upload`] handle for accounting bytes leaving this node.
     pub(crate) fn upload(&self) -> Upload {
         Upload::new(
@@ -192,5 +222,14 @@ mod tests {
         node.set_download_buffer(2048);
 
         assert_eq!(node.download_buffer_max(), 2048);
+    }
+
+    #[test]
+    fn channel_remaining_starts_at_zero() {
+        let node = Node::new(NodeId::ZERO);
+
+        // Before any round advances, capacity is 0.
+        assert_eq!(node.upload_channel_remaining(), 0);
+        assert_eq!(node.download_channel_remaining(), 0);
     }
 }
